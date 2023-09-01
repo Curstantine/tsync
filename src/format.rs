@@ -25,6 +25,7 @@ impl CodecFormat {
     pub fn from_str<S: AsRef<str> + Display>(str: S) -> Result<CodecFormat> {
         match str.as_ref() {
             "opus" => Ok(CodecFormat::Opus),
+            "libopus" => Ok(CodecFormat::LibOpus),
             "vorbis" => Ok(CodecFormat::Vorbis),
             "mp3" => Ok(CodecFormat::Mp3),
             _ => Err(Error::Descriptive(format!("codec {}, is not supported!", str))),

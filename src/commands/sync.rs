@@ -41,6 +41,17 @@ pub fn run(
     let transcode_extensions = split_optional_comma_string(transcode_extensions).expect("Default supplied by clap");
     let sync_extensions = split_optional_comma_string(sync_extensions).expect("Default supplied by clap");
 
+    let invalid_extensions = transcode_extensions
+        .iter()
+        .filter(|ext| sync_extensions.contains(ext))
+        .map(|ext| ext.to_string())
+        .collect::<Vec<_>>();
+
+    if !invalid_extensions.is_empty() {
+        let message = format!("Extensions cannot overlap: {}", invalid_extensions.join(","));
+        return Err(Error::Descriptive(message));
+    }
+
     // We can skip over the transcoding extensions if we don't have a codec.
     let readable_extensions = if codec.is_some() {
         transcode_extensions
@@ -51,8 +62,8 @@ pub fn run(
     } else {
         sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
     };
-    let files = read_dir_recursively(source_dir, &Some(readable_extensions))?;
 
+    let files = read_dir_recursively(source_dir, &Some(readable_extensions))?;
     println!("Found {} files", files.len().to_string().green());
 
     let indicator = ProgressBar::new(files.len() as u64);
@@ -91,11 +102,12 @@ pub fn run(
         }
         // Skip over files that don't match the sync extension when we don't have a codec.
         else if !sync_extensions.contains(&get_extension(file.as_ref())) {
+            indicator.set_message(format!("Skipping {n}", n = get_file_name(&rel_path)));
+            indicator.inc(1);
             continue;
         }
 
-        let message = format!("Pushing {n}", n = get_file_name(&rel_path));
-        indicator.set_message(message);
+        indicator.set_message(format!("Pushing {n}", n = get_file_name(&rel_path)));
 
         let target_path = target_dir.join(rel_path);
         push_to_adb_device(&final_source_path, &target_path)?;
