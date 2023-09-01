@@ -4,6 +4,8 @@
         "indicatif",
         "libmp",
         "libopus",
-        "libvorbis"
+        "libvorbis",
+        "opusenc",
+        "Vorbis"
     ]
 }

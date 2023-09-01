@@ -24,9 +24,9 @@ pub enum Commands {
             long_help = "\
 The format to transcode to while syncing with the device. 
 If supplied, all files that are not in this format will be transcoded to it.
-Supported formats: opus, ogg, mp3"
+Supported formats: opus, libvorbis, libmp3lame"
         )]
-        format: Option<String>,
+        codec: Option<String>,
 
         #[arg(
             long,

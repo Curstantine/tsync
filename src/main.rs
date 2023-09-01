@@ -7,6 +7,7 @@ mod cli;
 mod commands;
 mod constants;
 mod errors;
+mod format;
 mod utils;
 
 fn main() {
@@ -25,7 +26,7 @@ fn run() -> errors::Result<()> {
         Commands::Sync {
             source,
             target,
-            format,
+            codec: format,
             bitrate,
             filter_ext,
         } => commands::sync::sync(source, target, format, bitrate, filter_ext),

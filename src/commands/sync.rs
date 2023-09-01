@@ -5,7 +5,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
     errors::{self, Error},
-    utils::{get_bitrate, get_codec, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
+    format::CodecFormat,
+    utils::{get_bitrate, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
 };
 
 const TEMP_DIR: &str = "./tmp";
@@ -66,8 +67,8 @@ pub fn sync<P: AsRef<Path>>(
         if let Some(format) = &format {
             let temp_path = temp_dir.join(rel_path).with_extension(format);
 
-            let codec = get_codec(format)?;
-            let bitrate = get_bitrate(format, &bitrate)?;
+            let codec = CodecFormat::from_str(format)?;
+            let bitrate = get_bitrate(&codec, &bitrate)?;
 
             let message = format!(
                 "Transcoding {file_name} as {format} ({bitrate}K)",
