@@ -125,7 +125,7 @@ pub fn run(
         indicator.inc(1);
     }
 
-    indicator.finish();
+    indicator.finish_with_message("Done!");
 
     Ok(())
 }
