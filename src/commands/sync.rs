@@ -79,36 +79,42 @@ pub fn run(
     for file in files.into_iter() {
         let mut final_source_path = file.clone();
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
+        let source_file_ext = get_extension(file.as_ref());
 
         // But why? Can't we use the check from codec.is_some()? No, not really.
-        // We support syncing files that are part of the sync_extensions, but don't go through the transcoding workflow.
+        // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
         // So in cases like removing the temp file, it will remove the source file instead.
         let mut transcoded = false;
 
-        if let Some(codec) = &codec {
-            let new_ext = codec.get_extension_str();
-            let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
-            let bitrate = bitrate.expect("Bitrate must be Some if codec is Some");
+        match &codec {
+            Some(codec) if transcode_extensions.contains(&source_file_ext) => {
+                let new_ext = codec.get_extension_str();
+                let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
+                let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
-            let message = format!("Transcoding {n} with {codec} {bitrate}K", n = get_file_name(&rel_path));
-            indicator.set_message(message);
+                let message = format!("Transcoding {n} [{codec}@{bitrate}K]", n = get_file_name(&rel_path));
+                indicator.set_message(message);
 
-            fs::create_dir_all(temp_path.parent().unwrap())?;
-            transcode_file(&file, &temp_path, codec, bitrate)?;
+                fs::create_dir_all(temp_path.parent().unwrap())?;
+                transcode_file(&file, &temp_path, codec, bitrate)?;
 
-            transcoded = true;
-            final_source_path = temp_path;
-            rel_path.set_extension(new_ext);
-        }
-        // Skip over files that don't match the sync extension when we don't have a codec.
-        else if !sync_extensions.contains(&get_extension(file.as_ref())) {
-            indicator.set_message(format!("Skipping {n}", n = get_file_name(&rel_path)));
-            indicator.inc(1);
-            continue;
+                transcoded = true;
+                final_source_path = temp_path;
+                rel_path.set_extension(new_ext);
+            }
+            // Ignore files with extensions that matches the sync extensions.
+            Some(_) if sync_extensions.contains(&source_file_ext) => {}
+            // Skip over files that don't match the sync extension when we don't have a codec.
+            None if transcode_extensions.contains(&source_file_ext) => {
+                let message = format!("Skipping {n}", n = get_file_name(&rel_path));
+                indicator.set_message(message);
+                indicator.inc(1);
+                continue;
+            }
+            _ => unreachable!(),
         }
 
         indicator.set_message(format!("Pushing {n}", n = get_file_name(&rel_path)));
-
         let target_path = target_dir.join(rel_path);
         push_to_adb_device(&final_source_path, &target_path)?;
 

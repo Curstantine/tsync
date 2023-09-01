@@ -59,6 +59,7 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: &CodecFormat,
 
     if !output.status.success() {
         let message = format!("transcoder exited with code {}", output.status.code().unwrap_or(-1));
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
         return Err(Error::Descriptive(message));
     }
 
