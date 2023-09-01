@@ -6,7 +6,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crate::{
     errors::{self, Error},
     format::CodecFormat,
-    utils::{is_adb_running, push_to_adb_device, read_dir_recursively, split_optional_comma_string, transcode_file},
+    utils::{
+        adb_file_exists, is_adb_running, push_to_adb_device, read_dir_recursively, split_optional_comma_string,
+        transcode_file,
+    },
 };
 
 const TEMP_DIR: &str = "./tmp";
@@ -75,6 +78,11 @@ pub fn run(
 
     let get_file_name = |p: &Path| p.file_name().unwrap().to_str().unwrap().to_string();
     let get_extension = |p: &Path| p.extension().unwrap_or_default().to_str().unwrap().to_string();
+    let path_already_exists = |p: &Path, indicator: &ProgressBar| {
+        let message = format!("{n} already exists", n = get_file_name(p));
+        indicator.set_message(message);
+        indicator.inc(1);
+    };
 
     for file in files.into_iter() {
         let mut final_source_path = file.clone();
@@ -92,6 +100,13 @@ pub fn run(
                 let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
                 let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
+                // Memory moment. We need to skip over files that already exist on the device.
+                let a = target_dir.join(&rel_path.with_extension(new_ext));
+                if adb_file_exists(a)? {
+                    path_already_exists(&rel_path, &indicator);
+                    continue;
+                }
+
                 let message = format!("Transcoding {n} [{codec}@{bitrate}K]", n = get_file_name(&rel_path));
                 indicator.set_message(message);
 
@@ -103,7 +118,12 @@ pub fn run(
                 rel_path.set_extension(new_ext);
             }
             // Ignore files with extensions that matches the sync extensions.
-            Some(_) if sync_extensions.contains(&source_file_ext) => {}
+            Some(_) if sync_extensions.contains(&source_file_ext) => {
+                if adb_file_exists(target_dir.join(&rel_path))? {
+                    path_already_exists(&rel_path, &indicator);
+                    continue;
+                }
+            }
             // Skip over files that don't match the sync extension when we don't have a codec.
             None if transcode_extensions.contains(&source_file_ext) => {
                 let message = format!("Skipping {n}", n = get_file_name(&rel_path));

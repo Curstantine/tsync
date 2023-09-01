@@ -1,11 +1,17 @@
 {
-    "cSpell.words": [
-        "flac",
-        "indicatif",
-        "libmp",
-        "libopus",
-        "libvorbis",
-        "opusenc",
-        "Vorbis"
-    ]
+	"editor.defaultFormatter": "dprint.dprint",
+	"[rust]": {
+		"editor.defaultFormatter": "rust-lang.rust-analyzer"
+	},
+	"cSpell.words": [
+		"adbd",
+		"flac",
+		"indicatif",
+		"libmp",
+		"libopus",
+		"libvorbis",
+		"opusenc",
+		"urlencoding",
+		"Vorbis"
+	]
 }

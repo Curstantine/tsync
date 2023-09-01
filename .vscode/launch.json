@@ -1,51 +1,51 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'tsync'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=tsync",
-                    "--package=tsync"
-                ],
-                "filter": {
-                    "name": "tsync",
-                    "kind": "bin"
-                }
-            },
-            "args": [
-                "sync",
-                "-c",
-                "opus",
-                "/home/Curstantine/Music",
-                "/sdcard/Music/Library",
-            ],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'tsync'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=tsync",
-                    "--package=tsync"
-                ],
-                "filter": {
-                    "name": "tsync",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
-    ]
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug executable 'tsync'",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=tsync",
+					"--package=tsync"
+				],
+				"filter": {
+					"name": "tsync",
+					"kind": "bin"
+				}
+			},
+			"args": [
+				"sync",
+				"-c",
+				"opus",
+				"/home/Curstantine/Music",
+				"/sdcard/Music/Library"
+			],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug unit tests in executable 'tsync'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--bin=tsync",
+					"--package=tsync"
+				],
+				"filter": {
+					"name": "tsync",
+					"kind": "bin"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
+		}
+	]
 }
