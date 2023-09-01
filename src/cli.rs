@@ -22,9 +22,10 @@ pub enum Commands {
             long,
             short,
             long_help = "\
-The format to transcode to while syncing with the device. 
-If supplied, all files that are not in this format will be transcoded to it.
-Supported formats: opus, libvorbis, libmp3lame"
+The codec to use while syncing (on-the-fly).
+Transcoding will only apply if something is passed to this, else only the files matched by `sync_extensions` will synced.
+
+Supported codecs: opus (opusenc), libopus (ffmpeg), libvorbis (ffmpeg), libmp3lame (ffmpeg)"
         )]
         codec: Option<String>,
 
@@ -32,19 +33,28 @@ Supported formats: opus, libvorbis, libmp3lame"
             long,
             short,
             long_help = "\
-The bitrate to used for transcoding.
-Will only be used if `format` is supplied, and the source file is not in the specified format.
-Supported bitrates: opus: 6-510, ogg: 45-500, mp3: 8-320"
+The bitrate to use while transcoding files matched by `transcode_extensions`.
+Only applies if `codec` is set.
+
+Supported bitrates:
+    - opus, libopus: 6-256 (128 default)
+    - libvorbis: 32-500 (192 default)
+    - libmp3lame: 32-500 (192 default)"
         )]
         bitrate: Option<u32>,
 
         #[arg(
             long,
-            long_help = "\
-Extensions to filter by when syncing.
-Multiple extensions can be specified by separating them with a comma.
-Example: --filter-ext flac,opus would only sync files with the extensions flac and opus."
+            default_value = "flac,alac",
+            long_help = "A comma-separated list of extensions to include in the transcoding process."
         )]
-        filter_ext: Option<String>,
+        transcode_extensions: Option<String>,
+
+        #[arg(
+            long,
+            default_value = "opus,ogg,mp3",
+            long_help = "A comma-separated list of extensions to include in the sync, but not to transcode."
+        )]
+        sync_extensions: Option<String>,
     },
 }

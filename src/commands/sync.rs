@@ -6,47 +6,52 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crate::{
     errors::{self, Error},
     format::CodecFormat,
-    utils::{get_bitrate, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
+    utils::{is_adb_running, push_to_adb_device, read_dir_recursively, split_optional_comma_string, transcode_file},
 };
 
 const TEMP_DIR: &str = "./tmp";
 
-pub fn sync<P: AsRef<Path>>(
-    source_dir: P,
-    target_dir: P,
-    format: Option<String>,
+pub fn run(
+    source_dir: String,
+    target_dir: String,
+    codec: Option<String>,
     bitrate: Option<u32>,
-    filter_extensions: Option<String>,
+    transcode_extensions: Option<String>,
+    sync_extensions: Option<String>,
 ) -> errors::Result<()> {
-    let source_dir = source_dir.as_ref();
-    let target_dir = target_dir.as_ref();
-    let temp_dir = Path::new(TEMP_DIR);
-
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
         return Err(Error::Descriptive(message));
     }
 
     match fs::create_dir(TEMP_DIR) {
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => fs::remove_dir_all(TEMP_DIR)?,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_dir_all(TEMP_DIR)?;
+            fs::create_dir(TEMP_DIR)?;
+        }
         Err(e) => return Err(e.into()),
         Ok(_) => {}
     }
 
-    let filter_extensions = filter_extensions
-        .map(|exts| exts.split(',').map(|ext| ext.trim().to_string()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let files = read_dir_recursively(source_dir)?
-        .into_iter()
-        .filter(|f| {
-            if filter_extensions.is_empty() {
-                return true;
-            }
+    let temp_dir = Path::new(TEMP_DIR);
+    let source_dir = Path::new(&source_dir);
+    let target_dir = Path::new(&target_dir);
+    let codec = codec.map(CodecFormat::from_str).transpose()?;
+    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
+    let transcode_extensions = split_optional_comma_string(transcode_extensions).expect("Default supplied by clap");
+    let sync_extensions = split_optional_comma_string(sync_extensions).expect("Default supplied by clap");
 
-            let ext = f.extension().unwrap_or_default().to_str().unwrap_or_default();
-            filter_extensions.contains(&ext.to_string())
-        })
-        .collect::<Vec<_>>();
+    // We can skip over the transcoding extensions if we don't have a codec.
+    let readable_extensions = if codec.is_some() {
+        transcode_extensions
+            .iter()
+            .chain(sync_extensions.iter())
+            .map(|ext| ext.to_string())
+            .collect::<Vec<_>>()
+    } else {
+        sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
+    };
+    let files = read_dir_recursively(source_dir, &Some(readable_extensions))?;
 
     println!("Found {} files", files.len().to_string().green());
 
@@ -57,38 +62,45 @@ pub fn sync<P: AsRef<Path>>(
             .progress_chars("#>-"),
     );
 
+    let get_file_name = |p: &Path| p.file_name().unwrap().to_str().unwrap().to_string();
+    let get_extension = |p: &Path| p.extension().unwrap_or_default().to_str().unwrap().to_string();
+
     for file in files.into_iter() {
         let mut final_source_path = file.clone();
+        let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
 
-        // Path relative to both source and temp dir to this file.
-        let rel_path = file.strip_prefix(source_dir).unwrap();
-        let get_file_name = || rel_path.file_name().unwrap().to_str().unwrap().to_string();
+        // But why? Can't we use the check from codec.is_some()? No, not really.
+        // We support syncing files that are part of the sync_extensions, but don't go through the transcoding workflow.
+        // So in cases like removing the temp file, it will remove the source file instead.
+        let mut transcoded = false;
 
-        if let Some(format) = &format {
-            let temp_path = temp_dir.join(rel_path).with_extension(format);
+        if let Some(codec) = &codec {
+            let new_ext = codec.get_extension_str();
+            let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
+            let bitrate = bitrate.expect("Bitrate must be Some if codec is Some");
 
-            let codec = CodecFormat::from_str(format)?;
-            let bitrate = get_bitrate(&codec, &bitrate)?;
-
-            let message = format!(
-                "Transcoding {file_name} as {format} ({bitrate}K)",
-                file_name = get_file_name(),
-            );
+            let message = format!("Transcoding {n} with {codec} {bitrate}K", n = get_file_name(&rel_path));
             indicator.set_message(message);
+
             fs::create_dir_all(temp_path.parent().unwrap())?;
             transcode_file(&file, &temp_path, codec, bitrate)?;
 
+            transcoded = true;
             final_source_path = temp_path;
+            rel_path.set_extension(new_ext);
+        }
+        // Skip over files that don't match the sync extension when we don't have a codec.
+        else if !sync_extensions.contains(&get_extension(file.as_ref())) {
+            continue;
         }
 
-        let message = format!("Pushing {file_name}", file_name = get_file_name());
+        let message = format!("Pushing {n}", n = get_file_name(&rel_path));
         indicator.set_message(message);
 
-        let target_path = target_dir.join(rel_path.with_extension("opus"));
+        let target_path = target_dir.join(rel_path);
         push_to_adb_device(&final_source_path, &target_path)?;
 
-        // Marked as a temp file if it was transcoded.
-        if format.is_some() {
+        if transcoded {
             fs::remove_file(final_source_path)?;
         }
 

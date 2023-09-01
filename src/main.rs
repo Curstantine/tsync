@@ -26,10 +26,11 @@ fn run() -> errors::Result<()> {
         Commands::Sync {
             source,
             target,
-            codec: format,
+            codec,
             bitrate,
-            filter_ext,
-        } => commands::sync::sync(source, target, format, bitrate, filter_ext),
+            transcode_extensions,
+            sync_extensions,
+        } => commands::sync::run(source, target, codec, bitrate, transcode_extensions, sync_extensions),
     }?;
 
     Ok(())
