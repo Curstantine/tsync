@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anstyle = "1.0.3"
 chrono = { version = "0.4.30", features = ["serde"] }
-clap = { version = "4.4.1", features = ["derive"] }
+clap = { version = "4.4.1", features = ["derive", "unstable-styles"] }
 colored = "2.0.4"
 indicatif = "0.17.6"
 serde = { version = "1.0.188", features = ["derive"] }

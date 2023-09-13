@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -8,6 +7,8 @@ use crate::{
     errors::{Error, Result},
     format::CodecFormat,
 };
+
+pub mod fs;
 
 pub fn is_adb_running() -> Result<bool> {
     let is_adb_running = Command::new("adb")
@@ -76,7 +77,7 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: &CodecFormat,
 pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<String>>) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    for entry in fs::read_dir(path)? {
+    for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
 

@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use clap::ValueEnum;
+
 use crate::errors::{Error, Result};
 
 #[derive(PartialEq, PartialOrd)]
@@ -8,6 +10,17 @@ pub enum CodecFormat {
     LibOpus,
     Vorbis,
     Mp3,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum Codec {
+    Opus,
+    Vorbis,
+    Mp3,
+    AacLc,
+
+    Flac,
+    Alac,
 }
 
 impl Display for CodecFormat {

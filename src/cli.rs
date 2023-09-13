@@ -1,7 +1,10 @@
+use anstyle::{AnsiColor, Color, Style};
 use clap::{Parser, Subcommand};
 
+use crate::{format::Codec, utils::fs::FSBackend};
+
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, styles = get_styles())]
 #[command(propagate_version = true)]
 pub struct Cli {
     #[command(subcommand)]
@@ -15,8 +18,17 @@ pub enum Commands {
         /// The source directory to sync from.
         source: String,
 
-        /// The directory on the device to sync to.
+        /// The directory to sync to.
         target: String,
+
+        #[arg(
+            long,
+            short,
+            long_help = "\
+Specifies the filesystem backend to use for syncing.
+By default, the value is inferred from the target directory."
+        )]
+        fs_backend: Option<FSBackend>,
 
         #[arg(
             long,
@@ -25,9 +37,9 @@ pub enum Commands {
 The codec to use while syncing (on-the-fly).
 Transcoding will only apply if something is passed to this, else only the files matched by `sync_extensions` will synced.
 
-Supported codecs: opus (opusenc), libopus (ffmpeg), libvorbis (ffmpeg), libmp3lame (ffmpeg)"
+Opus uses the opusenc binary, instead of the prepackaged symphonia library."
         )]
-        codec: Option<String>,
+        codec: Option<Codec>,
 
         #[arg(
             long,
@@ -36,25 +48,53 @@ Supported codecs: opus (opusenc), libopus (ffmpeg), libvorbis (ffmpeg), libmp3la
 The bitrate to use while transcoding files matched by `transcode_extensions`.
 Only applies if `codec` is set.
 
-Supported bitrates:
-    - opus, libopus: 6-256 (128 default)
-    - libvorbis: 32-500 (192 default)
-    - libmp3lame: 32-500 (192 default)"
+Default bitrates:
+    - opus, vorbis: 128K
+    - mp3: 320K
+    - aac-lc: 192K"
         )]
         bitrate: Option<u32>,
 
         #[arg(
             long,
-            default_value = "flac,alac",
-            long_help = "A comma-separated list of extensions to include in the transcoding process."
+            value_delimiter = ',',
+            default_value = "wav, flac, alac",
+            long_help = "A comma-separated list of codecs to match to include in the transcode process."
         )]
-        transcode_extensions: Option<String>,
+        transcode_codecs: Option<Vec<Codec>>,
 
         #[arg(
             long,
-            default_value = "opus,ogg,mp3",
-            long_help = "A comma-separated list of extensions to include in the sync, but not to transcode."
+            value_delimiter = ',',
+            default_value = "opus, ogg, mp3, aac-lc",
+            long_help = "A comma-separated list of codecs to match to include only in the sync process."
         )]
-        sync_extensions: Option<String>,
+        sync_codecs: Option<Vec<Codec>>,
     },
+}
+
+fn get_styles() -> clap::builder::Styles {
+    clap::builder::Styles::styled()
+        .usage(
+            Style::new()
+                .bold()
+                .underline()
+                .fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+        )
+        .header(
+            Style::new()
+                .bold()
+                .underline()
+                .fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+        )
+        .literal(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Green))))
+        .invalid(Style::new().bold().fg_color(Some(Color::Ansi(AnsiColor::Red))))
+        .error(Style::new().bold().fg_color(Some(Color::Ansi(AnsiColor::Red))))
+        .valid(
+            Style::new()
+                .bold()
+                .underline()
+                .fg_color(Some(Color::Ansi(AnsiColor::Green))),
+        )
+        .placeholder(Style::new().fg_color(Some(Color::Ansi(AnsiColor::White))))
 }

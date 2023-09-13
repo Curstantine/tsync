@@ -27,11 +27,20 @@ async fn run() -> errors::Result<()> {
         Commands::Sync {
             source,
             target,
+            fs_backend,
             codec,
             bitrate,
-            transcode_extensions,
-            sync_extensions,
-        } => commands::sync::run(source, target, codec, bitrate, transcode_extensions, sync_extensions),
+            transcode_codecs,
+            sync_codecs,
+        } => commands::sync::ren(
+            source,
+            target,
+            fs_backend.unwrap(),
+            codec,
+            bitrate,
+            transcode_codecs.unwrap(),
+            sync_codecs.unwrap(),
+        ),
     }
     .await?;
 

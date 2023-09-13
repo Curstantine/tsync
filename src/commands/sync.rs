@@ -4,15 +4,27 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
-    errors::{self, Error},
-    format::CodecFormat,
+    errors::{Error, Result},
+    format::{Codec, CodecFormat},
     utils::{
-        adb_file_exists, is_adb_running, push_to_adb_device, read_dir_recursively, split_optional_comma_string,
-        transcode_file,
+        adb_file_exists, fs::FSBackend, is_adb_running, push_to_adb_device, read_dir_recursively,
+        split_optional_comma_string, transcode_file,
     },
 };
 
 const TEMP_DIR: &str = "./tmp";
+
+pub async fn ren<P: AsRef<Path>>(
+    source_dir: P,
+    target_dir: P,
+    fs_backend: FSBackend,
+    codec: Option<Codec>,
+    bitrate: Option<u32>,
+    transcode_codecs: Vec<Codec>,
+    sync_codecs: Vec<Codec>,
+) -> Result<()> {
+    unimplemented!()
+}
 
 pub async fn run(
     source_dir: String,
@@ -21,7 +33,7 @@ pub async fn run(
     bitrate: Option<u32>,
     transcode_extensions: Option<String>,
     sync_extensions: Option<String>,
-) -> errors::Result<()> {
+) -> Result<()> {
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
         return Err(Error::descriptive(message));
