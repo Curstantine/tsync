@@ -33,7 +33,7 @@ pub fn push_to_adb_device<P: AsRef<Path>>(source: P, target: P) -> Result<()> {
     let output = cmd.output()?;
     if !output.status.success() {
         let message = format!("adb exited with code {}", output.status.code().unwrap_or(-1));
-        return Err(Error::Descriptive(message));
+        return Err(Error::descriptive(message));
     }
 
     Ok(())
@@ -67,7 +67,7 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: &CodecFormat,
     if !output.status.success() {
         let message = format!("transcoder exited with code {}", output.status.code().unwrap_or(-1));
         eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-        return Err(Error::Descriptive(message));
+        return Err(Error::descriptive(message));
     }
 
     Ok(())

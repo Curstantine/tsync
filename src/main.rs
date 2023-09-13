@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use cli::{Cli, Commands};
-use errors::Error;
+use errors::ErrorType;
 
 mod cli;
 mod commands;
@@ -12,8 +12,8 @@ mod utils;
 
 fn main() {
     if let Err(e) = run() {
-        match e {
-            Error::Abort => {}
+        match e.type_ {
+            ErrorType::Abort => {}
             _ => eprintln!("{}", e),
         }
     };

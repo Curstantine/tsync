@@ -28,7 +28,7 @@ impl CodecFormat {
             "libopus" => Ok(CodecFormat::LibOpus),
             "vorbis" => Ok(CodecFormat::Vorbis),
             "mp3" => Ok(CodecFormat::Mp3),
-            _ => Err(Error::Descriptive(format!("codec {}, is not supported!", str))),
+            _ => Err(Error::descriptive(format!("codec {}, is not supported!", str))),
         }
     }
 
@@ -60,7 +60,7 @@ impl CodecFormat {
 
                 if opt_bitrate < min || opt_bitrate > max {
                     let message = format!("Bitrate must be between {} and {} for format {}", min, max, self);
-                    return Err(Error::Descriptive(message));
+                    return Err(Error::descriptive(message));
                 }
 
                 Ok(opt_bitrate)

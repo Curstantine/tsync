@@ -24,7 +24,7 @@ pub fn run(
 ) -> errors::Result<()> {
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
-        return Err(Error::Descriptive(message));
+        return Err(Error::descriptive(message));
     }
 
     match fs::create_dir(TEMP_DIR) {
@@ -52,7 +52,7 @@ pub fn run(
 
     if !invalid_extensions.is_empty() {
         let message = format!("Extensions cannot overlap: {}", invalid_extensions.join(","));
-        return Err(Error::Descriptive(message));
+        return Err(Error::descriptive(message));
     }
 
     // We can skip over the transcoding extensions if we don't have a codec.
