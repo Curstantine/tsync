@@ -14,7 +14,7 @@ use crate::{
 
 const TEMP_DIR: &str = "./tmp";
 
-pub fn run(
+pub async fn run(
     source_dir: String,
     target_dir: String,
     codec: Option<String>,

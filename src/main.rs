@@ -10,8 +10,9 @@ mod errors;
 mod format;
 mod utils;
 
-fn main() {
-    if let Err(e) = run() {
+#[tokio::main]
+async fn main() {
+    if let Err(e) = run().await {
         match e.type_ {
             ErrorType::Abort => {}
             _ => eprintln!("{}", e),
@@ -19,7 +20,7 @@ fn main() {
     };
 }
 
-fn run() -> errors::Result<()> {
+async fn run() -> errors::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -31,7 +32,8 @@ fn run() -> errors::Result<()> {
             transcode_extensions,
             sync_extensions,
         } => commands::sync::run(source, target, codec, bitrate, transcode_extensions, sync_extensions),
-    }?;
+    }
+    .await?;
 
     Ok(())
 }
