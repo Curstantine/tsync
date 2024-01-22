@@ -32,7 +32,7 @@ async fn run() -> errors::Result<()> {
             bitrate,
             transcode_codecs,
             sync_codecs,
-        } => commands::sync::ren(
+        } => commands::sync::run(
             source,
             target,
             fs_backend.unwrap(),

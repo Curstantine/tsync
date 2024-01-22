@@ -11,7 +11,7 @@ use crate::{
 
 const TEMP_DIR: &str = "./tmp";
 
-pub async fn ren<P: AsRef<Path>>(
+pub async fn run<P: AsRef<Path>>(
     source_dir: P,
     target_dir: P,
     fs_backend: FSBackend,
@@ -59,7 +59,7 @@ pub async fn run_backend_adb(
 
     if transcode_codecs
         .iter()
-        .all(|transcode_codec| !sync_codecs.contains(transcode_codec))
+        .all(|transcode_codec| sync_codecs.contains(transcode_codec))
     {
         return Err(Error::descriptive("Sync and transcode extensions cannot overlap!"));
     }
@@ -122,7 +122,7 @@ pub async fn run_backend_adb(
 
                 // Memory moment. We need to skip over files that already exist on the device.
                 let a = target_dir.join(&rel_path.with_extension(new_ext));
-                if adb_file_exists(a)? {
+                if adb_file_exists(&a)? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
                 }
@@ -139,7 +139,7 @@ pub async fn run_backend_adb(
             }
             // Ignore files with extensions that matches the sync extensions.
             Some(_) if sync_extensions.contains(&source_file_ext) => {
-                if adb_file_exists(target_dir.join(&rel_path))? {
+                if adb_file_exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
                 }

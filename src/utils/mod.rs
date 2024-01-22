@@ -18,18 +18,19 @@ pub fn is_adb_running() -> Result<bool> {
     Ok(is_adb_running)
 }
 
-pub fn adb_file_exists<P: AsRef<Path>>(path: P) -> Result<bool> {
-    let escaped_path = format!(r#""{}""#, path.as_ref().to_str().unwrap());
-    let output = Command::new("adb").arg("shell").arg("ls").arg(escaped_path).output()?;
+pub fn adb_file_exists(path: &Path) -> Result<bool> {
+    let path = path.to_string_lossy().replace('\\', "/");
+    let output = Command::new("adb").arg("shell").arg("ls").arg(path).output()?;
 
     Ok(output.status.success())
 }
 
-pub fn push_to_adb_device<P: AsRef<Path>>(source: P, target: P) -> Result<()> {
+pub fn push_to_adb_device(source: &Path, target: &Path) -> Result<()> {
+    let source = source.to_string_lossy().replace('\\', "/");
+    let target = target.to_string_lossy().replace('\\', "/");
+
     let mut cmd = Command::new("adb");
-    cmd.arg("push")
-        .arg(source.as_ref().to_str().unwrap())
-        .arg(target.as_ref().to_str().unwrap());
+    cmd.arg("push").arg(source).arg(target);
 
     let output = cmd.output()?;
     if !output.status.success() {
