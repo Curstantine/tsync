@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     errors::{Error, Result},
-    format::CodecFormat,
+    format::Codec,
 };
 
 pub mod fs;
@@ -40,9 +40,9 @@ pub fn push_to_adb_device<P: AsRef<Path>>(source: P, target: P) -> Result<()> {
     Ok(())
 }
 
-pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: &CodecFormat, bitrate: u32) -> Result<()> {
+pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: Codec, bitrate: u32) -> Result<()> {
     let output = match codec {
-        CodecFormat::Opus => {
+        Codec::Opus => {
             let mut cmd = Command::new("opusenc");
             cmd.arg("--bitrate")
                 .arg(format!("{}K", bitrate))
@@ -97,8 +97,4 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<Str
     }
 
     Ok(files)
-}
-
-pub fn split_optional_comma_string(s: Option<String>) -> Option<Vec<String>> {
-    s.map(|exts| exts.split(',').map(|ext| ext.trim().to_string()).collect::<Vec<_>>())
 }

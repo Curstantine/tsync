@@ -5,11 +5,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
     errors::{Error, Result},
-    format::{Codec, CodecFormat},
-    utils::{
-        adb_file_exists, fs::FSBackend, is_adb_running, push_to_adb_device, read_dir_recursively,
-        split_optional_comma_string, transcode_file,
-    },
+    format::Codec,
+    utils::{adb_file_exists, fs::FSBackend, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
 };
 
 const TEMP_DIR: &str = "./tmp";
@@ -23,16 +20,28 @@ pub async fn ren<P: AsRef<Path>>(
     transcode_codecs: Vec<Codec>,
     sync_codecs: Vec<Codec>,
 ) -> Result<()> {
-    unimplemented!()
+    let result = match fs_backend {
+        FSBackend::Adb => run_backend_adb(
+            source_dir.as_ref(),
+            target_dir.as_ref(),
+            codec,
+            bitrate,
+            transcode_codecs,
+            sync_codecs,
+        ),
+        _ => unimplemented!(),
+    };
+
+    result.await
 }
 
-pub async fn run(
-    source_dir: String,
-    target_dir: String,
-    codec: Option<String>,
+pub async fn run_backend_adb(
+    source_dir: &Path,
+    target_dir: &Path,
+    codec: Option<Codec>,
     bitrate: Option<u32>,
-    transcode_extensions: Option<String>,
-    sync_extensions: Option<String>,
+    transcode_codecs: Vec<Codec>,
+    sync_codecs: Vec<Codec>,
 ) -> Result<()> {
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
@@ -48,24 +57,23 @@ pub async fn run(
         Ok(_) => {}
     }
 
-    let temp_dir = Path::new(TEMP_DIR);
-    let source_dir = Path::new(&source_dir);
-    let target_dir = Path::new(&target_dir);
-    let codec = codec.map(CodecFormat::from_str).transpose()?;
-    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
-    let transcode_extensions = split_optional_comma_string(transcode_extensions).expect("Default supplied by clap");
-    let sync_extensions = split_optional_comma_string(sync_extensions).expect("Default supplied by clap");
-
-    let invalid_extensions = transcode_extensions
+    if transcode_codecs
         .iter()
-        .filter(|ext| sync_extensions.contains(ext))
-        .map(|ext| ext.to_string())
-        .collect::<Vec<_>>();
-
-    if !invalid_extensions.is_empty() {
-        let message = format!("Extensions cannot overlap: {}", invalid_extensions.join(","));
-        return Err(Error::descriptive(message));
+        .all(|transcode_codec| !sync_codecs.contains(transcode_codec))
+    {
+        return Err(Error::descriptive("Sync and transcode extensions cannot overlap!"));
     }
+
+    let temp_dir = Path::new(TEMP_DIR);
+    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
+    let transcode_extensions = transcode_codecs
+        .iter()
+        .map(|x| x.get_extension_str().to_string())
+        .collect::<Vec<_>>();
+    let sync_extensions = transcode_codecs
+        .iter()
+        .map(|x| x.get_extension_str().to_string())
+        .collect::<Vec<_>>();
 
     // We can skip over the transcoding extensions if we don't have a codec.
     let readable_extensions = if codec.is_some() {
@@ -88,8 +96,8 @@ pub async fn run(
             .progress_chars("#>-"),
     );
 
-    let get_file_name = |p: &Path| p.file_name().unwrap().to_str().unwrap().to_string();
-    let get_extension = |p: &Path| p.extension().unwrap_or_default().to_str().unwrap().to_string();
+    let get_file_name = |p: &Path| p.file_name().unwrap().to_string_lossy().to_string();
+    let get_extension = |p: &Path| p.extension().unwrap().to_string_lossy().to_string();
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
         let message = format!("{n} already exists", n = get_file_name(p));
         indicator.set_message(message);
@@ -119,11 +127,11 @@ pub async fn run(
                     continue;
                 }
 
-                let message = format!("Transcoding {n} [{codec}@{bitrate}K]", n = get_file_name(&rel_path));
+                let message = format!("Transcoding {n} [{codec:?}@{bitrate}K]", n = get_file_name(&rel_path));
                 indicator.set_message(message);
 
                 fs::create_dir_all(temp_path.parent().unwrap())?;
-                transcode_file(&file, &temp_path, codec, bitrate)?;
+                transcode_file(&file, &temp_path, *codec, bitrate)?;
 
                 transcoded = true;
                 final_source_path = temp_path;
