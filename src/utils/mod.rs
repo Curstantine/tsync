@@ -19,7 +19,8 @@ pub fn is_adb_running() -> Result<bool> {
 }
 
 pub fn adb_file_exists(path: &Path) -> Result<bool> {
-    let path = path.to_string_lossy().replace('\\', "/");
+    // For some reason adb shell only accepts "escaped paths", like path/dir/location.opus -> "path/dir/location" with string quotes
+    let path = format!(r#""{}""#, path.to_string_lossy().replace('\\', "/"));
     let output = Command::new("adb").arg("shell").arg("ls").arg(path).output()?;
 
     Ok(output.status.success())
