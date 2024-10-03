@@ -57,15 +57,12 @@ pub async fn run_backend_adb(
         Ok(_) => {}
     }
 
-    if transcode_codecs
-        .iter()
-        .all(|transcode_codec| sync_codecs.contains(transcode_codec))
-    {
+    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
+    if bitrate.is_some() && transcode_codecs.iter().all(|tc| sync_codecs.contains(tc)) {
         return Err(Error::descriptive("Sync and transcode extensions cannot overlap!"));
     }
 
     let temp_dir = Path::new(TEMP_DIR);
-    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
     let transcode_extensions = transcode_codecs
         .iter()
         .map(|x| x.get_extension_str().to_string())
@@ -121,7 +118,7 @@ pub async fn run_backend_adb(
                 let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
                 // Memory moment. We need to skip over files that already exist on the device.
-                let a = target_dir.join(&rel_path.with_extension(new_ext));
+                let a = target_dir.join(rel_path.with_extension(new_ext));
                 if adb_file_exists(&a)? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
@@ -138,7 +135,7 @@ pub async fn run_backend_adb(
                 rel_path.set_extension(new_ext);
             }
             // Ignore files with extensions that matches the sync extensions.
-            Some(_) if sync_extensions.contains(&source_file_ext) => {
+            _ if sync_extensions.contains(&source_file_ext) => {
                 if adb_file_exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
