@@ -102,7 +102,6 @@ pub async fn run_backend_adb(
     };
 
     for file in files.into_iter() {
-        let mut final_source_path = file.clone();
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
         let source_file_ext = get_extension(file.as_ref());
 
@@ -110,6 +109,7 @@ pub async fn run_backend_adb(
         // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
         // So in cases like removing the temp file, it will remove the source file instead.
         let mut transcoded = false;
+        let mut final_source_path = file.clone();
 
         match &codec {
             Some(codec) if transcode_extensions.contains(&source_file_ext) => {
@@ -134,24 +134,22 @@ pub async fn run_backend_adb(
                 final_source_path = temp_path;
                 rel_path.set_extension(new_ext);
             }
-            // Ignore files with extensions that matches the sync extensions.
+            None if transcode_extensions.contains(&source_file_ext) => {
+                let message = format!("Skipping {:?}", get_file_name(&rel_path));
+                indicator.set_message(message);
+                indicator.inc(1);
+                continue;
+            }
             _ if sync_extensions.contains(&source_file_ext) => {
                 if adb_file_exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
                 }
             }
-            // Skip over files that don't match the sync extension when we don't have a codec.
-            None if transcode_extensions.contains(&source_file_ext) => {
-                let message = format!("Skipping {n}", n = get_file_name(&rel_path));
-                indicator.set_message(message);
-                indicator.inc(1);
-                continue;
-            }
             _ => unreachable!(),
         }
 
-        indicator.set_message(format!("Pushing {n}", n = get_file_name(&rel_path)));
+        indicator.set_message(format!("Pushing {:?}", get_file_name(&rel_path)));
         let target_path = target_dir.join(rel_path);
         push_to_adb_device(&final_source_path, &target_path)?;
 
