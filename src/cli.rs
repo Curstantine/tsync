@@ -79,10 +79,10 @@ Default bitrates:
 A text file containing a list of folders to sync. Folders listed must be exist within the source directory.
 
 E.g. source -> ~/Music/Library:
-    ~/Music/Library/ESAI
+    ESAI
     ~/Music/Library/K03
     ~/Music/Library/Various Artists/Stream Palette 4
-    ./Various Artists/Stream Palette 5 -RANKED-"
+    Various Artists/Stream Palette 5 -RANKED-"
         )]
         sync_list: Option<String>,
     },
