@@ -95,7 +95,7 @@ pub fn run_backend_adb(
         sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
     };
 
-    let files = read_dir_recursively(source_dir, &Some(readable_extensions))?;
+    let files = read_dir_recursively(source_dir, &Some(readable_extensions), &sync_file_list)?;
     println!("Found {} files", files.len().to_string().green());
 
     let indicator = ProgressBar::new(files.len() as u64);
@@ -121,13 +121,6 @@ pub fn run_backend_adb(
     for file in files.into_iter() {
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
         let source_file_ext = get_extension(file.as_ref());
-
-        if let Some(x) = &sync_file_list {
-            if !x.iter().any(|x| file.starts_with(x)) {
-                skipping(&rel_path, &indicator);
-                continue;
-            }
-        }
 
         // But why? Can't we use the check from codec.is_some()? No, not really.
         // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.

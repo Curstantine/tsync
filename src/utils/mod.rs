@@ -76,15 +76,25 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: Codec, bitrat
     Ok(())
 }
 
-pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<String>>) -> Result<Vec<PathBuf>> {
+pub fn read_dir_recursively<P: AsRef<Path>>(
+    path: P,
+    extensions: &Option<Vec<String>>,
+    excludes: &Option<Vec<PathBuf>>,
+) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
 
+        if let Some(x) = excludes {
+            if !x.iter().any(|x| entry.path().starts_with(x)) {
+                continue;
+            }
+        }
+
         if path.is_dir() {
-            let mut sub_files = read_dir_recursively(path, extensions)?;
+            let mut sub_files = read_dir_recursively(path, extensions, excludes)?;
             files.append(&mut sub_files);
         } else {
             let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
