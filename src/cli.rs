@@ -72,6 +72,19 @@ Default bitrates:
             long_help = "A comma-separated list of codecs to match to include only in the sync process."
         )]
         sync_codecs: Option<Vec<Codec>>,
+
+        #[arg(
+            long,
+            long_help = "\
+A text file containing a list of folders to sync. Folders listed must be exist within the source directory.
+
+E.g. source -> ~/Music/Library:
+    ~/Music/Library/ESAI
+    ~/Music/Library/K03
+    ~/Music/Library/Various Artists/Stream Palette 4
+    ./Various Artists/Stream Palette 5 -RANKED-"
+        )]
+        sync_list: Option<String>,
     },
 }
 

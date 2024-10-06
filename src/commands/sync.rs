@@ -6,28 +6,33 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crate::{
     errors::{Error, Result},
     format::Codec,
-    utils::{adb_file_exists, fs::FSBackend, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
+    utils::{
+        adb_file_exists, fs::FSBackend, is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively,
+        transcode_file,
+    },
 };
 
 const TEMP_DIR: &str = "./tmp";
 
-pub fn run<P: AsRef<Path>>(
-    source_dir: P,
-    target_dir: P,
-    fs_backend: FSBackend,
-    codec: Option<Codec>,
-    bitrate: Option<u32>,
-    transcode_codecs: Vec<Codec>,
-    sync_codecs: Vec<Codec>,
-) -> Result<()> {
-    match fs_backend {
+pub struct SyncOpts {
+    pub fs_backend: FSBackend,
+    pub codec: Option<Codec>,
+    pub bitrate: Option<u32>,
+    pub transcode_codecs: Vec<Codec>,
+    pub sync_codecs: Vec<Codec>,
+    pub sync_list: Option<String>,
+}
+
+pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Result<()> {
+    let sync_list_files = opts.sync_list.map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()));
+    match opts.fs_backend {
         FSBackend::Adb => run_backend_adb(
             source_dir.as_ref(),
             target_dir.as_ref(),
-            codec,
-            bitrate,
-            transcode_codecs,
-            sync_codecs,
+            opts.codec,
+            opts.bitrate,
+            opts.transcode_codecs,
+            opts.sync_codecs,
         ),
         _ => unimplemented!(),
     }

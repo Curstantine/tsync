@@ -1,6 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    rc::Rc,
 };
 
 use crate::{
@@ -99,4 +100,15 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<Str
     }
 
     Ok(files)
+}
+
+pub fn parse_sync_list(source_dir: &Path, path: &Path) -> Result<&'static [String]> {
+    let contents = std::fs::read_to_string(path)?;
+
+    let splits = contents
+        .split("\n")
+        .filter(|x| x.starts_with(&source_dir.to_string_lossy().to_string()));
+
+    println!("{splits:#?}");
+    unimplemented!()
 }
