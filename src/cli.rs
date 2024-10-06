@@ -1,5 +1,7 @@
-use anstyle::{AnsiColor, Color, Style};
-use clap::{Parser, Subcommand};
+use clap::{
+    builder::styling::{AnsiColor, Color, Style},
+    Parser, Subcommand,
+};
 
 use crate::{format::Codec, utils::fs::FSBackend};
 
