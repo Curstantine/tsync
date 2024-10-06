@@ -26,6 +26,7 @@ pub enum Commands {
         #[arg(
             long,
             short,
+            default_value = "adb",
             long_help = "\
 Specifies the filesystem backend to use for syncing.
 By default, the value is inferred from the target directory."

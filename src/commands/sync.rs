@@ -1,4 +1,7 @@
-use std::{fs, io, path::Path};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -24,7 +27,11 @@ pub struct SyncOpts {
 }
 
 pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Result<()> {
-    let sync_list_files = opts.sync_list.map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()));
+    let sync_list_files = opts
+        .sync_list
+        .map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()))
+        .transpose()?;
+
     match opts.fs_backend {
         FSBackend::Adb => run_backend_adb(
             source_dir.as_ref(),
@@ -33,6 +40,7 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
             opts.bitrate,
             opts.transcode_codecs,
             opts.sync_codecs,
+            sync_list_files,
         ),
         _ => unimplemented!(),
     }
@@ -45,6 +53,7 @@ pub fn run_backend_adb(
     bitrate: Option<u32>,
     transcode_codecs: Vec<Codec>,
     sync_codecs: Vec<Codec>,
+    sync_file_list: Option<Vec<PathBuf>>,
 ) -> Result<()> {
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
@@ -103,10 +112,22 @@ pub fn run_backend_adb(
         indicator.set_message(message);
         indicator.inc(1);
     };
+    let skipping = |p: &Path, indicator: &ProgressBar| {
+        let message = format!("Skipping {:?}", get_file_name(p));
+        indicator.set_message(message);
+        indicator.inc(1);
+    };
 
     for file in files.into_iter() {
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
         let source_file_ext = get_extension(file.as_ref());
+
+        if let Some(x) = &sync_file_list {
+            if !x.iter().any(|x| file.starts_with(x)) {
+                skipping(&rel_path, &indicator);
+                continue;
+            }
+        }
 
         // But why? Can't we use the check from codec.is_some()? No, not really.
         // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
@@ -138,9 +159,7 @@ pub fn run_backend_adb(
                 rel_path.set_extension(new_ext);
             }
             None if transcode_extensions.contains(&source_file_ext) => {
-                let message = format!("Skipping {:?}", get_file_name(&rel_path));
-                indicator.set_message(message);
-                indicator.inc(1);
+                skipping(&rel_path, &indicator);
                 continue;
             }
             _ if sync_extensions.contains(&source_file_ext) => {
