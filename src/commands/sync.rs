@@ -72,7 +72,6 @@ pub async fn run_backend_adb(
         .map(|x| x.get_extension_str().to_string())
         .collect::<Vec<_>>();
 
-    // We can skip over the transcoding extensions if we don't have a codec.
     let readable_extensions = if codec.is_some() {
         transcode_extensions
             .iter()
@@ -80,6 +79,7 @@ pub async fn run_backend_adb(
             .map(|ext| ext.to_string())
             .collect::<Vec<_>>()
     } else {
+        // We can skip over the transcoding extensions if we don't have a codec.
         sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
     };
 
