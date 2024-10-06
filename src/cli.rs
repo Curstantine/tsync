@@ -61,7 +61,6 @@ Default bitrates:
         #[arg(
             long,
             value_delimiter = ',',
-            default_value = "flac,alac",
             long_help = "A comma-separated list of codecs to match to include in the transcode process."
         )]
         transcode_codecs: Option<Vec<Codec>>,
@@ -69,7 +68,7 @@ Default bitrates:
         #[arg(
             long,
             value_delimiter = ',',
-            default_value = "opus,vorbis,mp3,aac-lc",
+            default_value = "flac,alac,opus,vorbis,mp3,aac-lc",
             long_help = "A comma-separated list of codecs to match to include only in the sync process."
         )]
         sync_codecs: Option<Vec<Codec>>,

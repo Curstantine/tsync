@@ -79,7 +79,7 @@ pub fn run_backend_adb(
         .iter()
         .map(|x| x.get_extension_str().to_string())
         .collect::<Vec<_>>();
-    let sync_extensions = transcode_codecs
+    let sync_extensions = sync_codecs
         .iter()
         .map(|x| x.get_extension_str().to_string())
         .collect::<Vec<_>>();

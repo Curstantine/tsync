@@ -30,7 +30,7 @@ fn main() {
                 fs_backend: fs_backend.unwrap(),
                 codec,
                 bitrate,
-                transcode_codecs: transcode_codecs.unwrap(),
+                transcode_codecs: transcode_codecs.unwrap_or(Vec::with_capacity(0)),
                 sync_codecs: sync_codecs.unwrap(),
                 sync_list,
             },
