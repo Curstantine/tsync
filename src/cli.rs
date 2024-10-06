@@ -37,7 +37,7 @@ By default, the value is inferred from the target directory."
 The codec to use while syncing (on-the-fly).
 Transcoding will only apply if something is passed to this, else only the files matched by `sync_extensions` will synced.
 
-Opus uses the opusenc binary, instead of the prepackaged symphonia library."
+Opus uses the opusenc library instead of ffmpeg to encode."
         )]
         codec: Option<Codec>,
 

@@ -9,9 +9,6 @@ pub enum ErrorType {
 
     StdIo,
     StdParseInt,
-    ChronoParse,
-
-    TokioTask,
     Descriptive,
     Serde,
 }
@@ -72,28 +69,6 @@ impl From<std::num::ParseIntError> for Error {
     fn from(error: std::num::ParseIntError) -> Self {
         Self {
             type_: ErrorType::StdParseInt,
-            message: error.to_string(),
-            context: None,
-            source: Some(Box::new(error)),
-        }
-    }
-}
-
-impl From<chrono::ParseError> for Error {
-    fn from(error: chrono::ParseError) -> Self {
-        Self {
-            type_: ErrorType::ChronoParse,
-            message: error.to_string(),
-            context: None,
-            source: Some(Box::new(error)),
-        }
-    }
-}
-
-impl From<tokio::task::JoinError> for Error {
-    fn from(error: tokio::task::JoinError) -> Self {
-        Self {
-            type_: ErrorType::TokioTask,
             message: error.to_string(),
             context: None,
             source: Some(Box::new(error)),

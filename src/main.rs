@@ -10,20 +10,9 @@ mod errors;
 mod format;
 mod utils;
 
-#[tokio::main]
-async fn main() {
-    if let Err(e) = run().await {
-        match e.type_ {
-            ErrorType::Abort => {}
-            _ => eprintln!("{}", e),
-        }
-    };
-}
-
-async fn run() -> errors::Result<()> {
+fn main() {
     let cli = Cli::parse();
-
-    match cli.command {
+    let run = match cli.command {
         Commands::Sync {
             source,
             target,
@@ -41,8 +30,12 @@ async fn run() -> errors::Result<()> {
             transcode_codecs.unwrap(),
             sync_codecs.unwrap(),
         ),
-    }
-    .await?;
+    };
 
-    Ok(())
+    if let Err(e) = run {
+        match e.type_ {
+            ErrorType::Abort => {}
+            _ => eprintln!("{}", e),
+        }
+    }
 }

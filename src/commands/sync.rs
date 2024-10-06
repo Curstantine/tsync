@@ -11,7 +11,7 @@ use crate::{
 
 const TEMP_DIR: &str = "./tmp";
 
-pub async fn run<P: AsRef<Path>>(
+pub fn run<P: AsRef<Path>>(
     source_dir: P,
     target_dir: P,
     fs_backend: FSBackend,
@@ -20,7 +20,7 @@ pub async fn run<P: AsRef<Path>>(
     transcode_codecs: Vec<Codec>,
     sync_codecs: Vec<Codec>,
 ) -> Result<()> {
-    let result = match fs_backend {
+    match fs_backend {
         FSBackend::Adb => run_backend_adb(
             source_dir.as_ref(),
             target_dir.as_ref(),
@@ -30,12 +30,10 @@ pub async fn run<P: AsRef<Path>>(
             sync_codecs,
         ),
         _ => unimplemented!(),
-    };
-
-    result.await
+    }
 }
 
-pub async fn run_backend_adb(
+pub fn run_backend_adb(
     source_dir: &Path,
     target_dir: &Path,
     codec: Option<Codec>,

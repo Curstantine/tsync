@@ -7,13 +7,10 @@ edition = "2021"
 
 [dependencies]
 anstyle = "1.0.3"
-chrono = { version = "0.4.30", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive", "unstable-styles"] }
 colored = "2.0.4"
 indicatif = "0.17.6"
 serde = { version = "1.0.188", features = ["derive"] }
-symphonia = { version = "0.5.3", features = ["all-codecs", "all-formats"] }
-tokio = { version = "1.32.0", features = ["full"] }
 
 [dev-dependencies]
 clap = { version = "4.4.1", features = ["derive"] }
