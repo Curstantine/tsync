@@ -78,7 +78,7 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: Codec, bitrat
 
 pub fn read_dir_recursively<P: AsRef<Path>>(
     path: P,
-    extensions: &Option<Vec<String>>,
+    extensions: &Option<Vec<&'static str>>,
     excludes: &Option<Vec<PathBuf>>,
 ) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -97,11 +97,9 @@ pub fn read_dir_recursively<P: AsRef<Path>>(
             let mut sub_files = read_dir_recursively(path, extensions, excludes)?;
             files.append(&mut sub_files);
         } else {
-            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
-
+            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
             match extensions {
-                // wtf lol
-                Some(exts) if exts.contains(&ext.to_string()) => files.push(path),
+                Some(exts) if exts.contains(&ext) => files.push(path),
                 None => files.push(path),
                 _ => continue,
             }

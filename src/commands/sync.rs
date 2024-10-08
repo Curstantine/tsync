@@ -8,7 +8,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
     errors::{Error, Result},
-    format::Codec,
+    format::{get_track_data, Codec},
     utils::{
         adb_file_exists, fs::FSBackend, is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively,
         transcode_file,
@@ -71,31 +71,27 @@ pub fn run_backend_adb(
 
     let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
     if bitrate.is_some() && transcode_codecs.iter().all(|tc| sync_codecs.contains(tc)) {
-        return Err(Error::descriptive("Sync and transcode extensions cannot overlap!"));
+        return Err(Error::descriptive("Sync and transcode codecs cannot overlap!"));
     }
 
     let temp_dir = Path::new(TEMP_DIR);
-    let transcode_extensions = transcode_codecs
-        .iter()
-        .map(|x| x.get_extension_str().to_string())
-        .collect::<Vec<_>>();
-    let sync_extensions = sync_codecs
-        .iter()
-        .map(|x| x.get_extension_str().to_string())
-        .collect::<Vec<_>>();
+    let files = {
+        let readable_extensions = if codec.is_some() {
+            transcode_codecs
+                .iter()
+                .chain(sync_codecs.iter())
+                .map(|x| x.get_extension_str())
+                .collect::<Vec<&'static str>>()
+        } else {
+            sync_codecs
+                .iter()
+                .map(|x| x.get_extension_str())
+                .collect::<Vec<&'static str>>()
+        };
 
-    let readable_extensions = if codec.is_some() {
-        transcode_extensions
-            .iter()
-            .chain(sync_extensions.iter())
-            .map(|ext| ext.to_string())
-            .collect::<Vec<_>>()
-    } else {
-        // We can skip over the transcoding extensions if we don't have a codec.
-        sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
+        read_dir_recursively(source_dir, &Some(readable_extensions), &sync_file_list)?
     };
 
-    let files = read_dir_recursively(source_dir, &Some(readable_extensions), &sync_file_list)?;
     println!("Found {} files", files.len().to_string().green());
 
     let indicator = ProgressBar::new(files.len() as u64);
@@ -128,13 +124,15 @@ pub fn run_backend_adb(
         let mut transcoded = false;
         let mut final_source_path = file.clone();
 
+        let file_data = get_track_data(&file, &source_file_ext)?;
+        let is_transcodable = transcode_codecs.contains(&file_data.codec);
+
         match &codec {
-            Some(codec) if transcode_extensions.contains(&source_file_ext) => {
+            Some(codec) if is_transcodable => {
                 let new_ext = codec.get_extension_str();
                 let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
                 let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
-                // Memory moment. We need to skip over files that already exist on the device.
                 let a = target_dir.join(rel_path.with_extension(new_ext));
                 if adb_file_exists(&a)? {
                     path_already_exists(&rel_path, &indicator);
@@ -151,11 +149,11 @@ pub fn run_backend_adb(
                 final_source_path = temp_path;
                 rel_path.set_extension(new_ext);
             }
-            None if transcode_extensions.contains(&source_file_ext) => {
+            None if is_transcodable => {
                 skipping(&rel_path, &indicator);
                 continue;
             }
-            _ if sync_extensions.contains(&source_file_ext) => {
+            _ if sync_codecs.contains(&file_data.codec) => {
                 if adb_file_exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
