@@ -1,33 +1,46 @@
-use std::{fs, io, path::Path};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
     errors::{Error, Result},
-    format::Codec,
-    utils::{adb_file_exists, fs::FSBackend, is_adb_running, push_to_adb_device, read_dir_recursively, transcode_file},
+    format::{get_track_data, Codec},
+    utils::{
+        adb_file_exists, fs::FSBackend, is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively,
+        transcode_file,
+    },
 };
 
 const TEMP_DIR: &str = "./tmp";
 
-pub fn run<P: AsRef<Path>>(
-    source_dir: P,
-    target_dir: P,
-    fs_backend: FSBackend,
-    codec: Option<Codec>,
-    bitrate: Option<u32>,
-    transcode_codecs: Vec<Codec>,
-    sync_codecs: Vec<Codec>,
-) -> Result<()> {
-    match fs_backend {
+pub struct SyncOpts {
+    pub fs_backend: FSBackend,
+    pub codec: Option<Codec>,
+    pub bitrate: Option<u32>,
+    pub transcode_codecs: Vec<Codec>,
+    pub sync_codecs: Vec<Codec>,
+    pub sync_list: Option<String>,
+}
+
+pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Result<()> {
+    let sync_list_files = opts
+        .sync_list
+        .map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()))
+        .transpose()?;
+
+    match opts.fs_backend {
         FSBackend::Adb => run_backend_adb(
             source_dir.as_ref(),
             target_dir.as_ref(),
-            codec,
-            bitrate,
-            transcode_codecs,
-            sync_codecs,
+            opts.codec,
+            opts.bitrate,
+            opts.transcode_codecs,
+            opts.sync_codecs,
+            sync_list_files,
         ),
         _ => unimplemented!(),
     }
@@ -40,6 +53,7 @@ pub fn run_backend_adb(
     bitrate: Option<u32>,
     transcode_codecs: Vec<Codec>,
     sync_codecs: Vec<Codec>,
+    sync_file_list: Option<Vec<PathBuf>>,
 ) -> Result<()> {
     if !is_adb_running()? {
         let message = "adb is not running. Please start adb and try again.".to_string();
@@ -57,31 +71,27 @@ pub fn run_backend_adb(
 
     let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
     if bitrate.is_some() && transcode_codecs.iter().all(|tc| sync_codecs.contains(tc)) {
-        return Err(Error::descriptive("Sync and transcode extensions cannot overlap!"));
+        return Err(Error::descriptive("Sync and transcode codecs cannot overlap!"));
     }
 
     let temp_dir = Path::new(TEMP_DIR);
-    let transcode_extensions = transcode_codecs
-        .iter()
-        .map(|x| x.get_extension_str().to_string())
-        .collect::<Vec<_>>();
-    let sync_extensions = transcode_codecs
-        .iter()
-        .map(|x| x.get_extension_str().to_string())
-        .collect::<Vec<_>>();
+    let files = {
+        let readable_extensions = if codec.is_some() {
+            transcode_codecs
+                .iter()
+                .chain(sync_codecs.iter())
+                .map(|x| x.get_extension_str())
+                .collect::<Vec<&'static str>>()
+        } else {
+            sync_codecs
+                .iter()
+                .map(|x| x.get_extension_str())
+                .collect::<Vec<&'static str>>()
+        };
 
-    let readable_extensions = if codec.is_some() {
-        transcode_extensions
-            .iter()
-            .chain(sync_extensions.iter())
-            .map(|ext| ext.to_string())
-            .collect::<Vec<_>>()
-    } else {
-        // We can skip over the transcoding extensions if we don't have a codec.
-        sync_extensions.iter().map(|ext| ext.to_string()).collect::<Vec<_>>()
+        read_dir_recursively(source_dir, &Some(readable_extensions), &sync_file_list)?
     };
 
-    let files = read_dir_recursively(source_dir, &Some(readable_extensions))?;
     println!("Found {} files", files.len().to_string().green());
 
     let indicator = ProgressBar::new(files.len() as u64);
@@ -98,6 +108,11 @@ pub fn run_backend_adb(
         indicator.set_message(message);
         indicator.inc(1);
     };
+    let skipping = |p: &Path, indicator: &ProgressBar| {
+        let message = format!("Skipping {:?}", get_file_name(p));
+        indicator.set_message(message);
+        indicator.inc(1);
+    };
 
     for file in files.into_iter() {
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
@@ -109,13 +124,15 @@ pub fn run_backend_adb(
         let mut transcoded = false;
         let mut final_source_path = file.clone();
 
+        let file_data = get_track_data(&file, &source_file_ext)?;
+        let is_transcodable = transcode_codecs.contains(&file_data.codec);
+
         match &codec {
-            Some(codec) if transcode_extensions.contains(&source_file_ext) => {
+            Some(codec) if is_transcodable => {
                 let new_ext = codec.get_extension_str();
                 let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
                 let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
-                // Memory moment. We need to skip over files that already exist on the device.
                 let a = target_dir.join(rel_path.with_extension(new_ext));
                 if adb_file_exists(&a)? {
                     path_already_exists(&rel_path, &indicator);
@@ -132,13 +149,11 @@ pub fn run_backend_adb(
                 final_source_path = temp_path;
                 rel_path.set_extension(new_ext);
             }
-            None if transcode_extensions.contains(&source_file_ext) => {
-                let message = format!("Skipping {:?}", get_file_name(&rel_path));
-                indicator.set_message(message);
-                indicator.inc(1);
+            None if is_transcodable => {
+                skipping(&rel_path, &indicator);
                 continue;
             }
-            _ if sync_extensions.contains(&source_file_ext) => {
+            _ if sync_codecs.contains(&file_data.codec) => {
                 if adb_file_exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;

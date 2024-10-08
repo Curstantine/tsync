@@ -26,6 +26,7 @@ pub enum Commands {
         #[arg(
             long,
             short,
+            default_value = "adb",
             long_help = "\
 Specifies the filesystem backend to use for syncing.
 By default, the value is inferred from the target directory."
@@ -60,7 +61,6 @@ Default bitrates:
         #[arg(
             long,
             value_delimiter = ',',
-            default_value = "flac,alac",
             long_help = "A comma-separated list of codecs to match to include in the transcode process."
         )]
         transcode_codecs: Option<Vec<Codec>>,
@@ -68,10 +68,23 @@ Default bitrates:
         #[arg(
             long,
             value_delimiter = ',',
-            default_value = "opus,vorbis,mp3,aac-lc",
+            default_value = "flac,alac,opus,vorbis,mp3,aac-lc",
             long_help = "A comma-separated list of codecs to match to include only in the sync process."
         )]
         sync_codecs: Option<Vec<Codec>>,
+
+        #[arg(
+            long,
+            long_help = "\
+A text file containing a list of folders to sync. Folders listed must be exist within the source directory.
+
+E.g. source -> ~/Music/Library:
+    ESAI
+    ~/Music/Library/K03
+    ~/Music/Library/Various Artists/Stream Palette 4
+    Various Artists/Stream Palette 5 -RANKED-"
+        )]
+        sync_list: Option<String>,
     },
 }
 

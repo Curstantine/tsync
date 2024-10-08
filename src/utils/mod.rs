@@ -76,22 +76,30 @@ pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: Codec, bitrat
     Ok(())
 }
 
-pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<String>>) -> Result<Vec<PathBuf>> {
+pub fn read_dir_recursively<P: AsRef<Path>>(
+    path: P,
+    extensions: &Option<Vec<&'static str>>,
+    excludes: &Option<Vec<PathBuf>>,
+) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
 
+        if let Some(x) = excludes {
+            if !x.iter().any(|x| entry.path().starts_with(x)) {
+                continue;
+            }
+        }
+
         if path.is_dir() {
-            let mut sub_files = read_dir_recursively(path, extensions)?;
+            let mut sub_files = read_dir_recursively(path, extensions, excludes)?;
             files.append(&mut sub_files);
         } else {
-            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
-
+            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
             match extensions {
-                // wtf lol
-                Some(exts) if exts.contains(&ext.to_string()) => files.push(path),
+                Some(exts) if exts.contains(&ext) => files.push(path),
                 None => files.push(path),
                 _ => continue,
             }
@@ -99,4 +107,16 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<Str
     }
 
     Ok(files)
+}
+
+pub fn parse_sync_list(source_dir: &Path, path: &Path) -> Result<Vec<PathBuf>> {
+    let contents = std::fs::read_to_string(path)?;
+
+    let splits = contents
+        .split(&['\n', '\r'])
+        .filter(|x| !x.is_empty())
+        .map(|x| source_dir.join(x))
+        .collect::<Vec<_>>();
+
+    Ok(splits)
 }
