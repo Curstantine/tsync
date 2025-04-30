@@ -23,54 +23,33 @@ pub enum Commands {
         /// The directory to sync to.
         target: String,
 
-        #[arg(
-            long,
-            short,
-            default_value = "adb",
-            long_help = "\
-Specifies the filesystem backend to use for syncing.
-By default, the value is inferred from the target directory."
-        )]
-        fs_backend: Option<FSBackend>,
+        #[arg(long, short, default_value = "adb")]
+        /// Specifies the filesystem backend to use for syncing.
+        fs: Option<FSBackend>,
 
-        #[arg(
-            long,
-            short,
-            long_help = "\
-The codec to use while syncing (on-the-fly).
-Transcoding will only apply if something is passed to this, else only the files matched by `sync_extensions` will synced.
-
-Opus uses the opusenc library instead of ffmpeg to encode."
-        )]
+        #[arg(long, short)]
+        /// The codec to transcode into for tracks matching the transcode_codecs.
+        ///
+        /// Transcoding will only apply if a value is passed, else only the files matched by `sync_extensions` will synced.
         codec: Option<Codec>,
 
-        #[arg(
-            long,
-            short,
-            long_help = "\
-The bitrate to use while transcoding files matched by `transcode_extensions`.
-Only applies if `codec` is set.
-
-Default bitrates:
-    - opus, vorbis: 128K
-    - mp3: 320K
-    - aac-lc: 192K"
-        )]
+        #[arg(long, short)]
+        /// The bitrate to use while transcoding files matched by `transcode_extensions`.
+        /// Only applies if `codec` is set.
+        ///
+        /// Default values:
+        /// - opus: 128K
+        /// - vorbis: 192K
+        /// - mp3: 320K
+        /// - aac-lc: 192K
         bitrate: Option<u32>,
 
-        #[arg(
-            long,
-            value_delimiter = ',',
-            long_help = "A comma-separated list of codecs to match to include in the transcode process."
-        )]
+        #[arg(long, value_delimiter = ',', default_value = "flac,alac")]
+        /// A comma-separated list of codecs to match to include in the transcode process.
         transcode_codecs: Option<Vec<Codec>>,
 
-        #[arg(
-            long,
-            value_delimiter = ',',
-            default_value = "flac,alac,opus,vorbis,mp3,aac-lc",
-            long_help = "A comma-separated list of codecs to match to include only in the sync process."
-        )]
+        #[arg(long, value_delimiter = ',', default_value = "opus,vorbis,mp3,aac-lc")]
+        /// A comma-separated list of codecs to match to include only in the sync process.
         sync_codecs: Option<Vec<Codec>>,
 
         #[arg(

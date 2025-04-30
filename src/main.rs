@@ -17,7 +17,7 @@ fn main() {
         Commands::Sync {
             source,
             target,
-            fs_backend,
+            fs,
             codec,
             bitrate,
             transcode_codecs,
@@ -27,7 +27,7 @@ fn main() {
             source,
             target,
             SyncOpts {
-                fs_backend: fs_backend.unwrap(),
+                fs: fs.unwrap(),
                 codec,
                 bitrate,
                 transcode_codecs: transcode_codecs.unwrap_or(Vec::with_capacity(0)),

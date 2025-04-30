@@ -7,18 +7,18 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
+    constants,
     errors::{Error, Result},
     format::{get_track_data, Codec},
     utils::{
-        adb_file_exists, fs::FSBackend, is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively,
-        transcode_file,
+        adb_file_exists,
+        fs::{get_file_ext, get_file_name, FSBackend},
+        is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively, transcode_file,
     },
 };
 
-const TEMP_DIR: &str = "./tmp";
-
 pub struct SyncOpts {
-    pub fs_backend: FSBackend,
+    pub fs: FSBackend,
     pub codec: Option<Codec>,
     pub bitrate: Option<u32>,
     pub transcode_codecs: Vec<Codec>,
@@ -32,7 +32,7 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
         .map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()))
         .transpose()?;
 
-    match opts.fs_backend {
+    match opts.fs {
         FSBackend::Adb => run_backend_adb(
             source_dir.as_ref(),
             target_dir.as_ref(),
@@ -60,10 +60,11 @@ pub fn run_backend_adb(
         return Err(Error::descriptive(message));
     }
 
-    match fs::create_dir(TEMP_DIR) {
+    let temp_dir = Path::new(constants::TEMP_DIR);
+    match fs::create_dir(temp_dir) {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            fs::remove_dir_all(TEMP_DIR)?;
-            fs::create_dir(TEMP_DIR)?;
+            fs::remove_dir_all(temp_dir)?;
+            fs::create_dir(temp_dir)?;
         }
         Err(e) => return Err(e.into()),
         Ok(_) => {}
@@ -74,7 +75,6 @@ pub fn run_backend_adb(
         return Err(Error::descriptive("Sync and transcode codecs cannot overlap!"));
     }
 
-    let temp_dir = Path::new(TEMP_DIR);
     let files = {
         let readable_extensions = if codec.is_some() {
             transcode_codecs
@@ -94,20 +94,18 @@ pub fn run_backend_adb(
 
     println!("Found {} files", files.len().to_string().green());
 
-    let indicator = ProgressBar::new(files.len() as u64);
-    indicator.set_style(
+    let indicator = ProgressBar::new(files.len() as u64).with_style(
         ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
             .unwrap()
             .progress_chars("#>-"),
     );
 
-    let get_file_name = |p: &Path| p.file_name().unwrap().to_string_lossy().to_string();
-    let get_extension = |p: &Path| p.extension().unwrap().to_string_lossy().to_string();
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
         let message = format!("{n} already exists", n = get_file_name(p));
         indicator.set_message(message);
         indicator.inc(1);
     };
+
     let skipping = |p: &Path, indicator: &ProgressBar| {
         let message = format!("Skipping {:?}", get_file_name(p));
         indicator.set_message(message);
@@ -116,7 +114,7 @@ pub fn run_backend_adb(
 
     for file in files.into_iter() {
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
-        let source_file_ext = get_extension(file.as_ref());
+        let source_file_ext = get_file_ext(file.as_ref());
 
         // But why? Can't we use the check from codec.is_some()? No, not really.
         // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
