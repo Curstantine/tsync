@@ -13,7 +13,7 @@ use crate::{
     utils::{
         adb_file_exists,
         fs::{get_file_ext, get_file_name, FSBackend},
-        is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively, transcode_file,
+        is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively, read_selectively, transcode_file,
     },
 };
 
@@ -89,7 +89,11 @@ pub fn run_backend_adb(
                 .collect::<Vec<&'static str>>()
         };
 
-        read_dir_recursively(source_dir, &Some(readable_extensions), &sync_file_list)?
+        if let Some(within) = sync_file_list {
+            read_selectively(&within, &Some(readable_extensions))?
+        } else {
+            read_dir_recursively(source_dir, &Some(readable_extensions))?
+        }
     };
 
     println!("Found {} files", files.len().to_string().green());
@@ -106,8 +110,8 @@ pub fn run_backend_adb(
         indicator.inc(1);
     };
 
-    let skipping = |p: &Path, indicator: &ProgressBar| {
-        let message = format!("Skipping {:?}", get_file_name(p));
+    let skipping = |p: &Path, indicator: &ProgressBar, message: Option<&'static str>| {
+        let message = format!("Skipping {:?} {}", get_file_name(p), message.unwrap_or(""));
         indicator.set_message(message);
         indicator.inc(1);
     };
@@ -123,7 +127,7 @@ pub fn run_backend_adb(
         let mut final_source_path = file.clone();
 
         let file_data = get_track_data(&file, &source_file_ext)?;
-        let is_transcodable = transcode_codecs.contains(&file_data.codec);
+        let is_transcodable = !sync_codecs.contains(&file_data.codec) && transcode_codecs.contains(&file_data.codec);
 
         match &codec {
             Some(codec) if is_transcodable => {
@@ -148,7 +152,7 @@ pub fn run_backend_adb(
                 rel_path.set_extension(new_ext);
             }
             None if is_transcodable => {
-                skipping(&rel_path, &indicator);
+                skipping(&rel_path, &indicator, Some("due to no codec"));
                 continue;
             }
             _ if sync_codecs.contains(&file_data.codec) => {
