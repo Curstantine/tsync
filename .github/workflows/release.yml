@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build (release)
+        run: cargo build --locked --release
+
+      - name: Generate shell completions
+        run: |
+          mkdir completions
+          ./target/release/tsync completion bash > ./completions/tsync.bash
+          ./target/release/tsync completion zsh  > ./completions/_tsync
+          ./target/release/tsync completion fish > ./completions/tsync.fish
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsync-${{ matrix.os }}-${{ github.ref_name }}-release
+          path: |
+            target/release/tsync
+            completions/
