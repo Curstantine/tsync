@@ -14,6 +14,7 @@
 		"opusenc",
 		"tcpip",
 		"transcodable",
+		"tsync",
 		"urlencoding",
 		"Vorbis"
 	]

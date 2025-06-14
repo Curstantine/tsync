@@ -1,0 +1,39 @@
+pkgname=tsync
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="CLI utility to sync your local music library to another device"
+arch=('x86_64')
+url="https://github.com/curstantine/tsync"
+license=('MIT')
+depends=()
+optdepends=(
+  'ffmpeg: for on-the-fly transcoding (optional)'
+  'opusenc: for encoding to Opus via opus-tools (optional)'
+  'adb: to sync via Android Debug Bridge (optional)'
+)
+makedepends=('rust' 'cargo')
+
+source=("$pkgname-$pkgver.tar.gz::https://github.com/curstantine/tsync/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  cargo build --release
+  
+  # generate shell completions
+  ./target/release/tsync completion bash > tsync.bash
+  ./target/release/tsync completion zsh > _tsync
+  ./target/release/tsync completion fish > tsync.fish
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  install -Dm755 target/release/tsync "$pkgdir/usr/bin/tsync"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  
+  # install completion scripts
+  install -Dm644 tsync.bash "$pkgdir/usr/share/bash-completion/completions/tsync"
+  install -Dm644 _tsync "$pkgdir/usr/share/zsh/site-functions/_tsync"
+  install -Dm644 tsync.fish "$pkgdir/usr/share/fish/vendor_completions.d/tsync.fish"
+}

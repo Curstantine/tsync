@@ -1,4 +1,6 @@
+use clap::CommandFactory;
 use clap::Parser;
+use clap_complete::generate;
 
 use cli::{Cli, Commands};
 use commands::sync::SyncOpts;
@@ -35,6 +37,11 @@ fn main() {
                 sync_list,
             },
         ),
+        Commands::Completion { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "tsync", &mut std::io::stdout());
+            return;
+        }
     };
 
     if let Err(e) = run {

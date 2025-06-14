@@ -1,7 +1,8 @@
 use clap::{
-    builder::styling::{AnsiColor, Color, Style},
     Parser, Subcommand,
+    builder::styling::{AnsiColor, Color, Style},
 };
+use clap_complete::Shell;
 
 use crate::{format::Codec, utils::fs::FSBackend};
 
@@ -64,6 +65,10 @@ E.g. source -> ~/Music/Library:
     Various Artists/Stream Palette 5 -RANKED-"
         )]
         sync_list: Option<String>,
+    },
+    Completion {
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
