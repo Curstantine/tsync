@@ -6,34 +6,34 @@ on:
       - 'v*'
 
 jobs:
-  release:
-    name: release
+  build:
+    name: Build and Upload
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     
     runs-on: ${{ matrix.os }}
-    env:
-      TAG: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Build (release)
-        run: cargo build --locked --release
+        run: |
+          mkdir release
+          cargo build --locked --release
+          cp ./target/release/tsync release
 
       - name: Generate shell completions
         run: |
-          mkdir completions
-          ./target/release/tsync completion bash > ./completions/tsync.bash
-          ./target/release/tsync completion zsh  > ./completions/_tsync
-          ./target/release/tsync completion fish > ./completions/tsync.fish
+          mkdir release/completions
+          release/tsync completion bash > release/completions/tsync.bash
+          release/tsync completion zsh  > release/completions/_tsync
+          release/tsync completion fish > release/completions/tsync.fish
+          release/tsync completion powershell > release/completions/tsync.ps1
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tsync-${{ matrix.os }}-${{ github.ref_name }}-release
-          path: |
-            target/release/tsync
-            completions/
+          path: release/**/*
