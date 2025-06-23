@@ -3,7 +3,7 @@ use std::{fs::File, path::Path};
 use clap::ValueEnum;
 use symphonia::core::{
     codecs::{
-        CodecType, CODEC_TYPE_AAC, CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS,
+        CODEC_TYPE_AAC, CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS, CodecType,
     },
     formats::{FormatOptions, Track},
     io::MediaSourceStream,
