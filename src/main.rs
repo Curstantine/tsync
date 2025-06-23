@@ -8,7 +8,6 @@ use errors::ErrorType;
 
 mod cli;
 mod commands;
-mod constants;
 mod errors;
 mod format;
 mod utils;
