@@ -15,6 +15,7 @@ pub fn is_adb_running() -> Result<bool> {
         .arg("devices")
         .output()
         .map(|output| output.status.success())?;
+
     Ok(is_adb_running)
 }
 

@@ -1,18 +1,14 @@
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{env, fs, io, path::Path};
 
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{
-    constants,
     errors::{Error, Result},
-    format::{get_track_data, Codec},
+    format::{Codec, get_track_data},
     utils::{
         adb_file_exists,
-        fs::{get_file_ext, get_file_name, FSBackend},
+        fs::{FSBackend, get_file_ext, get_file_name},
         is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively, read_selectively, transcode_file,
     },
 };
@@ -27,69 +23,49 @@ pub struct SyncOpts {
 }
 
 pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Result<()> {
+    let fs_wrapper = FSWrapper::new(opts.fs)?;
+    let source_dir = source_dir.as_ref();
+    let target_dir = target_dir.as_ref();
+    let temp_dir = env::temp_dir().join("tsync");
+
     let sync_list_files = opts
         .sync_list
-        .map(|x| parse_sync_list(source_dir.as_ref(), x.as_ref()))
+        .map(|x| parse_sync_list(source_dir, x.as_ref()))
         .transpose()?;
 
-    match opts.fs {
-        FSBackend::Adb => run_backend_adb(
-            source_dir.as_ref(),
-            target_dir.as_ref(),
-            opts.codec,
-            opts.bitrate,
-            opts.transcode_codecs,
-            opts.sync_codecs,
-            sync_list_files,
-        ),
-        _ => unimplemented!(),
-    }
-}
-
-pub fn run_backend_adb(
-    source_dir: &Path,
-    target_dir: &Path,
-    codec: Option<Codec>,
-    bitrate: Option<u32>,
-    transcode_codecs: Vec<Codec>,
-    sync_codecs: Vec<Codec>,
-    sync_file_list: Option<Vec<PathBuf>>,
-) -> Result<()> {
-    if !is_adb_running()? {
-        let message = "adb is not running. Please start adb and try again.".to_string();
-        return Err(Error::descriptive(message));
-    }
-
-    let temp_dir = Path::new(constants::TEMP_DIR);
-    match fs::create_dir(temp_dir) {
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            fs::remove_dir_all(temp_dir)?;
-            fs::create_dir(temp_dir)?;
+    if let Err(e) = fs::create_dir(&temp_dir) {
+        if e.kind() != io::ErrorKind::AlreadyExists {
+            return Err(e.into());
         }
-        Err(e) => return Err(e.into()),
-        Ok(_) => {}
+
+        fs::remove_dir_all(&temp_dir)?;
+        fs::create_dir(&temp_dir)?;
     }
 
-    let bitrate = codec.as_ref().map(|c| c.get_matching_bitrate(bitrate)).transpose()?;
-    if bitrate.is_some() && transcode_codecs.iter().all(|tc| sync_codecs.contains(tc)) {
+    let bitrate = opts
+        .codec
+        .as_ref()
+        .map(|c| c.get_matching_bitrate(opts.bitrate))
+        .transpose()?;
+    if bitrate.is_some() && opts.transcode_codecs.iter().any(|tc| opts.sync_codecs.contains(tc)) {
         return Err(Error::descriptive("Sync and transcode codecs cannot overlap!"));
     }
 
     let files = {
-        let readable_extensions = if codec.is_some() {
-            transcode_codecs
+        let readable_extensions = if opts.codec.is_some() {
+            opts.transcode_codecs
                 .iter()
-                .chain(sync_codecs.iter())
+                .chain(opts.sync_codecs.iter())
                 .map(|x| x.get_extension_str())
                 .collect::<Vec<&'static str>>()
         } else {
-            sync_codecs
+            opts.sync_codecs
                 .iter()
                 .map(|x| x.get_extension_str())
                 .collect::<Vec<&'static str>>()
         };
 
-        if let Some(within) = sync_file_list {
+        if let Some(within) = sync_list_files {
             read_selectively(&within, &Some(readable_extensions))?
         } else {
             read_dir_recursively(source_dir, &Some(readable_extensions))?
@@ -105,13 +81,13 @@ pub fn run_backend_adb(
     );
 
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
-        let message = format!("{n} already exists", n = get_file_name(p));
+        let message = format!("{} already exists", get_file_name(p));
         indicator.set_message(message);
         indicator.inc(1);
     };
 
     let skipping = |p: &Path, indicator: &ProgressBar, message: Option<&'static str>| {
-        let message = format!("Skipping {:?} {}", get_file_name(p), message.unwrap_or(""));
+        let message = format!("Skipping {} {}", get_file_name(p), message.unwrap_or(""));
         indicator.set_message(message);
         indicator.inc(1);
     };
@@ -127,16 +103,16 @@ pub fn run_backend_adb(
         let mut final_source_path = file.clone();
 
         let file_data = get_track_data(&file, &source_file_ext)?;
-        let is_transcodable = !sync_codecs.contains(&file_data.codec) && transcode_codecs.contains(&file_data.codec);
+        let is_transcodable =
+            !opts.sync_codecs.contains(&file_data.codec) && opts.transcode_codecs.contains(&file_data.codec);
 
-        match &codec {
+        match &opts.codec {
             Some(codec) if is_transcodable => {
                 let new_ext = codec.get_extension_str();
                 let temp_path = temp_dir.join(&rel_path).with_extension(new_ext);
                 let bitrate = bitrate.expect("Bitrate must be set if codec is set");
 
-                let a = target_dir.join(rel_path.with_extension(new_ext));
-                if adb_file_exists(&a)? {
+                if fs_wrapper.exists(&target_dir.join(rel_path.with_extension(new_ext)))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
                 }
@@ -155,8 +131,8 @@ pub fn run_backend_adb(
                 skipping(&rel_path, &indicator, Some("due to no codec"));
                 continue;
             }
-            _ if sync_codecs.contains(&file_data.codec) => {
-                if adb_file_exists(&target_dir.join(&rel_path))? {
+            _ if opts.sync_codecs.contains(&file_data.codec) => {
+                if fs_wrapper.exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
                 }
@@ -164,9 +140,8 @@ pub fn run_backend_adb(
             _ => unreachable!(),
         }
 
-        indicator.set_message(format!("Pushing {:?}", get_file_name(&rel_path)));
-        let target_path = target_dir.join(rel_path);
-        push_to_adb_device(&final_source_path, &target_path)?;
+        indicator.set_message(format!("Moving {:?}", get_file_name(&rel_path)));
+        fs_wrapper.copy(&final_source_path, &target_dir.join(rel_path))?;
 
         if transcoded {
             fs::remove_file(final_source_path)?;
@@ -178,4 +153,44 @@ pub fn run_backend_adb(
     indicator.finish_with_message("Done!");
 
     Ok(())
+}
+
+struct FSWrapper {
+    fs: FSBackend,
+}
+
+impl FSWrapper {
+    fn new(fs: FSBackend) -> Result<Self> {
+        match fs {
+            FSBackend::Adb => {
+                if !is_adb_running()? {
+                    let message = "adb is not running. Please start adb and try again.".to_string();
+                    return Err(Error::descriptive(message));
+                }
+            }
+            FSBackend::Ftp => todo!(),
+            FSBackend::None => {}
+        }
+
+        Ok(Self { fs })
+    }
+
+    fn copy(&self, source: &Path, target: &Path) -> Result<()> {
+        match self.fs {
+            FSBackend::Adb => push_to_adb_device(source, target),
+            FSBackend::Ftp => todo!(),
+            FSBackend::None => {
+                fs::copy(source, target)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn exists(&self, path: &Path) -> Result<bool> {
+        match self.fs {
+            FSBackend::Adb => adb_file_exists(path),
+            FSBackend::Ftp => todo!(),
+            FSBackend::None => Ok(path.exists()),
+        }
+    }
 }
