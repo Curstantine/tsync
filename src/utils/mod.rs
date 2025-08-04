@@ -106,6 +106,10 @@ pub fn read_selectively<P: AsRef<Path>>(paths: &[P], extensions: &Option<Vec<&'s
     for entry in paths {
         let path = entry.as_ref();
 
+        if !path.exists() {
+            return Err(Error::descriptive("File does not exist").with_context(path.to_string_lossy()));
+        }
+
         if path.is_dir() {
             let mut sub_files = read_dir_recursively(path, extensions)?;
             files.append(&mut sub_files);
