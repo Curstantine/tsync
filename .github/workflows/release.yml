@@ -24,7 +24,14 @@ jobs:
         run: |
           mkdir release
           cargo build --locked --release
-          cp ./target/release/tsync release
+        
+      - name: Copy binary (Unix)
+        if: runner.os != 'Windows'
+        run: cp ./target/release/tsync release/
+        
+      - name: Copy binary (Windows)
+        if: runner.os == 'Windows'
+        run: Copy-Item ./target/release/tsync.exe release/
 
       - name: Generate shell completions
         run: |
