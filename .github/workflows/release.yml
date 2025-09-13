@@ -37,3 +37,14 @@ jobs:
         with:
           name: tsync-${{ matrix.os }}-${{ github.ref_name }}-release
           path: release/**/*
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            LICENSE
+            release/tsync
+            release/completions/tsync.bash
+            release/completions/_tsync
+            release/completions/tsync.fish
+            release/completions/tsync.ps1
