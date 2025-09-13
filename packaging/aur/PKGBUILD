@@ -14,24 +14,16 @@ optdepends=(
 source=("$pkgname-$pkgver.tar.gz::https://github.com/Curstantine/tsync/releases/download/v$pkgver/tsync-unix.tar.gz")
 sha256sums=('854a2e1f713c05f00533e424e951d6f601f3dc599a6c9641defec443d1ffb0d6')
 
-build() {
-    cd "$srcdir/$pkgname-$pkgver"
-    cargo build --release
-
-    # generate shell completions
-    ./target/release/tsync completion bash > tsync.bash
-    ./target/release/tsync completion zsh > _tsync
-    ./target/release/tsync completion fish > tsync.fish
+prepare() {
+    tar -xzf "$srcdir/$pkgname-$pkgver.tar.gz" -C "$srcdir"
 }
 
 package() {
-    cd "$srcdir/$pkgname-$pkgver"
-    install -Dm755 target/release/tsync "$pkgdir/usr/bin/tsync"
-    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-
+    cd "$srcdir"
+    install -Dm755 ./tsync "$pkgdir/usr/bin/tsync"
+    
     # install completion scripts
-    install -Dm644 tsync.bash "$pkgdir/usr/share/bash-completion/completions/tsync"
-    install -Dm644 _tsync "$pkgdir/usr/share/zsh/site-functions/_tsync"
-    install -Dm644 tsync.fish "$pkgdir/usr/share/fish/vendor_completions.d/tsync.fish"
+    install -Dm644 completions/tsync.bash "$pkgdir/usr/share/bash-completion/completions/tsync"
+    install -Dm644 completions/_tsync "$pkgdir/usr/share/zsh/site-functions/_tsync"
+    install -Dm644 completions/tsync.fish "$pkgdir/usr/share/fish/vendor_completions.d/tsync.fish"
 }
