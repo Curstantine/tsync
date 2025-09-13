@@ -11,8 +11,8 @@ optdepends=(
     'opusenc: for encoding to Opus via opus-tools (optional)'
     'adb: to sync via Android Debug Bridge (optional)'
 )
-source=("$pkgname-$pkgver.tar.gz::https://github.com/Curstantine/tsync/releases/download/v$pkgver/unix.tar.gz")
-sha256sums=('sha256:ffc28ed9ad6bbe3ee61cb66e4bc7a22655f8fe0b496648b4ebed5d40e591597b')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Curstantine/tsync/releases/download/v$pkgver/tsync-unix.tar.gz")
+sha256sums=('sha256:854a2e1f713c05f00533e424e951d6f601f3dc599a6c9641defec443d1ffb0d6')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
