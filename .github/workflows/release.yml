@@ -14,6 +14,11 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            name: unix
+          - os: windows-latest
+            name: windows 
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -42,13 +47,13 @@ jobs:
           release/tsync completion powershell > release/completions/tsync.ps1
 
       - name: Create tarball of release files
-        run: tar -czvf tsync-${{ matrix.os }}-${{ github.ref_name }}-release.tar.gz -C release .
+        run: tar -czvf tsync-${{ matrix.name }}.tar.gz -C release .
 
       - name: Upload release tarball
         uses: actions/upload-artifact@v4
         with:
-          name: tsync-${{ matrix.os }}-${{ github.ref_name }}-release
-          path: tsync-${{ matrix.os }}-${{ github.ref_name }}-release.tar.gz
+          name: tsync-${{ matrix.name }}
+          path: tsync-${{ matrix.name }}.tar.gz
 
   release:
     name: Release
