@@ -12,7 +12,7 @@ optdepends=(
     'adb: to sync via Android Debug Bridge (optional)'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/Curstantine/tsync/releases/download/v$pkgver/tsync-unix.tar.gz")
-sha256sums=('sha256:854a2e1f713c05f00533e424e951d6f601f3dc599a6c9641defec443d1ffb0d6')
+sha256sums=('854a2e1f713c05f00533e424e951d6f601f3dc599a6c9641defec443d1ffb0d6')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
