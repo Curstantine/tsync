@@ -9,7 +9,7 @@ use crate::{
     utils::{
         adb_file_exists,
         ffmpeg::{strip_covers, transcode_file},
-        fs::{FSBackend, get_file_ext, get_file_name, read_dir_recursively, read_selectively},
+        fs::{FSBackend, get_file_ext, get_file_name, is_extra, read_dir_recursively, read_selectively},
         is_adb_running, parse_sync_list, push_to_adb_device,
     },
 };
@@ -19,6 +19,7 @@ pub struct SyncOpts {
     pub codec: Option<Codec>,
     pub bitrate: Option<u32>,
     pub strip_covers: bool,
+    pub include_extras: bool,
     pub transcode_codecs: Vec<Codec>,
     pub sync_codecs: Vec<Codec>,
     pub sync_list: Option<String>,
@@ -67,8 +68,8 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
                 .collect::<Vec<&'static str>>()
         };
 
-        if let Some(within) = sync_list_files {
-            read_selectively(&within, &Some(readable_extensions))?
+        if let Some(within) = &sync_list_files {
+            read_selectively(within, &Some(readable_extensions))?
         } else {
             read_dir_recursively(source_dir, &Some(readable_extensions))?
         }
@@ -76,11 +77,14 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
 
     println!("Found {} files", files.len().to_string().green());
 
-    let indicator = ProgressBar::new(files.len() as u64).with_style(
-        ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
-            .unwrap()
-            .progress_chars("#>-"),
-    );
+    let indicator = {
+        let len = opts.include_extras.then_some(files.len() + 1).unwrap_or(files.len()) as u64;
+        ProgressBar::new(len).with_style(
+            ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
+                .unwrap()
+                .progress_chars("#>-"),
+        )
+    };
 
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
         let message = format!("{} already exists", get_file_name(p));
@@ -160,6 +164,29 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
 
         if is_temp {
             fs::remove_file(final_source_path)?;
+        }
+
+        indicator.inc(1);
+    }
+
+    if opts.include_extras {
+        let exts = vec!["jpg", "png", "jpeg"];
+        let files = if let Some(within) = &sync_list_files {
+            read_selectively(&within, &Some(exts))?
+        } else {
+            read_dir_recursively(source_dir, &Some(exts))?
+        };
+
+        for file in files.into_iter().filter(|x| is_extra(x)) {
+            let rel_path = file.strip_prefix(source_dir).unwrap();
+
+            if fs_wrapper.exists(&target_dir.join(rel_path))? {
+                path_already_exists(rel_path, &indicator);
+                continue;
+            }
+
+            indicator.set_message("Syncing extra files...");
+            fs_wrapper.copy(&file, &target_dir.join(rel_path))?;
         }
 
         indicator.inc(1);

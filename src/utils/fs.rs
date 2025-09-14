@@ -24,6 +24,15 @@ pub fn get_file_ext(p: &std::path::Path) -> String {
     p.extension().unwrap().to_string_lossy().to_string()
 }
 
+pub fn is_extra(p: &std::path::Path) -> bool {
+    p.file_name().is_some_and(|e| {
+        matches!(
+            e.to_string_lossy().to_lowercase().as_str(),
+            "cover.jpg" | "cover.png" | "folder.jpg" | "folder.png" | "front.jpg" | "front.png"
+        )
+    })
+}
+
 pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>> {
     let mut files = Vec::<PathBuf>::new();
 
@@ -34,13 +43,14 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'s
         if path.is_dir() {
             let mut sub_files = read_dir_recursively(path, extensions)?;
             files.append(&mut sub_files);
-        } else {
-            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
-            match extensions {
-                Some(exts) if exts.contains(&ext) => files.push(path),
-                None => files.push(path),
-                _ => continue,
-            }
+            continue;
+        }
+
+        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
+        match extensions {
+            Some(exts) if exts.contains(&ext) => files.push(path),
+            None => files.push(path),
+            _ => continue,
         }
     }
 
@@ -60,13 +70,14 @@ pub fn read_selectively<P: AsRef<Path>>(paths: &[P], extensions: &Option<Vec<&'s
         if path.is_dir() {
             let mut sub_files = read_dir_recursively(path, extensions)?;
             files.append(&mut sub_files);
-        } else {
-            let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
-            match extensions {
-                Some(exts) if exts.contains(&ext) => files.push(path.to_path_buf()),
-                None => files.push(path.to_path_buf()),
-                _ => continue,
-            }
+            continue;
+        }
+
+        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
+        match extensions {
+            Some(exts) if exts.contains(&ext) => files.push(path.to_path_buf()),
+            None => files.push(path.to_path_buf()),
+            _ => continue,
         }
     }
 
