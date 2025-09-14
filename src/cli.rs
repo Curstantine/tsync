@@ -45,6 +45,10 @@ pub enum Commands {
         /// - aac-lc: 192K
         bitrate: Option<u32>,
 
+        #[arg(long, default_value_t = false)]
+        /// If set, album cover images will be stripped from synced files.
+        strip_covers: bool,
+
         #[arg(long, value_delimiter = ',', default_value = "flac,alac")]
         /// A comma-separated list of codecs to match to include in the transcode process.
         transcode_codecs: Option<Vec<Codec>>,

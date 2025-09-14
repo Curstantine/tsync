@@ -8,8 +8,9 @@ use crate::{
     format::{Codec, get_track_data},
     utils::{
         adb_file_exists,
-        fs::{FSBackend, get_file_ext, get_file_name},
-        is_adb_running, parse_sync_list, push_to_adb_device, read_dir_recursively, read_selectively, transcode_file,
+        ffmpeg::{strip_covers, transcode_file},
+        fs::{FSBackend, get_file_ext, get_file_name, read_dir_recursively, read_selectively},
+        is_adb_running, parse_sync_list, push_to_adb_device,
     },
 };
 
@@ -17,6 +18,7 @@ pub struct SyncOpts {
     pub fs: FSBackend,
     pub codec: Option<Codec>,
     pub bitrate: Option<u32>,
+    pub strip_covers: bool,
     pub transcode_codecs: Vec<Codec>,
     pub sync_codecs: Vec<Codec>,
     pub sync_list: Option<String>,
@@ -99,12 +101,11 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
         // But why? Can't we use the check from codec.is_some()? No, not really.
         // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
         // So in cases like removing the temp file, it will remove the source file instead.
-        let mut transcoded = false;
+        let mut is_temp = false;
         let mut final_source_path = file.clone();
 
-        let file_data = get_track_data(&file, &source_file_ext)?;
-        let is_transcodable =
-            !opts.sync_codecs.contains(&file_data.codec) && opts.transcode_codecs.contains(&file_data.codec);
+        let meta = get_track_data(&file, &source_file_ext)?;
+        let is_transcodable = !opts.sync_codecs.contains(&meta.codec) && opts.transcode_codecs.contains(&meta.codec);
 
         match &opts.codec {
             Some(codec) if is_transcodable => {
@@ -123,7 +124,7 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
                 fs::create_dir_all(temp_path.parent().unwrap())?;
                 transcode_file(&file, &temp_path, *codec, bitrate)?;
 
-                transcoded = true;
+                is_temp = true;
                 final_source_path = temp_path;
                 rel_path.set_extension(new_ext);
             }
@@ -131,19 +132,33 @@ pub fn run<P: AsRef<Path>>(source_dir: P, target_dir: P, opts: SyncOpts) -> Resu
                 skipping(&rel_path, &indicator, Some("due to no codec"));
                 continue;
             }
-            _ if opts.sync_codecs.contains(&file_data.codec) => {
+            _ if opts.sync_codecs.contains(&meta.codec) => {
                 if fs_wrapper.exists(&target_dir.join(&rel_path))? {
                     path_already_exists(&rel_path, &indicator);
                     continue;
+                }
+
+                if opts.strip_covers {
+                    let temp_path = temp_dir.join(&rel_path);
+                    fs::create_dir_all(temp_path.parent().unwrap())?;
+                    fs::copy(&file, &temp_path)?;
+
+                    let message = format!("Stripping covers from {}", get_file_name(&rel_path));
+                    indicator.set_message(message);
+
+                    strip_covers(&temp_path, &temp_path)?;
+
+                    is_temp = true;
+                    final_source_path = temp_path;
                 }
             }
             _ => unreachable!(),
         }
 
-        indicator.set_message(format!("Moving {:?}", get_file_name(&rel_path)));
+        indicator.set_message(format!("Syncing {:?}", get_file_name(&rel_path)));
         fs_wrapper.copy(&final_source_path, &target_dir.join(rel_path))?;
 
-        if transcoded {
+        if is_temp {
             fs::remove_file(final_source_path)?;
         }
 
@@ -180,6 +195,10 @@ impl FSWrapper {
             FSBackend::Adb => push_to_adb_device(source, target),
             FSBackend::Ftp => todo!(),
             FSBackend::None => {
+                if let Some(p) = target.parent() {
+                    fs::create_dir_all(p)?;
+                }
+
                 fs::copy(source, target)?;
                 Ok(())
             }
