@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ErrorType {
     Abort,
@@ -31,7 +31,6 @@ impl Error {
         }
     }
 
-    #[allow(dead_code)]
     pub fn with_context(mut self, context: impl Into<String>) -> Self {
         self.context = Some(context.into());
         self

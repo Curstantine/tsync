@@ -1,9 +1,7 @@
-use clap::CommandFactory;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 
 use cli::{Cli, Commands};
-use commands::sync::SyncOpts;
 use errors::ErrorType;
 
 mod cli;
@@ -15,31 +13,7 @@ mod utils;
 fn main() {
     let cli = Cli::parse();
     let run = match cli.command {
-        Commands::Sync {
-            source,
-            target,
-            fs,
-            codec,
-            bitrate,
-            strip_covers,
-            include_extras,
-            transcode_codecs,
-            sync_codecs,
-            sync_list,
-        } => commands::sync::run(
-            source,
-            target,
-            SyncOpts {
-                fs: fs.unwrap(),
-                codec,
-                bitrate,
-                strip_covers,
-                include_extras,
-                transcode_codecs: transcode_codecs.unwrap_or(Vec::with_capacity(0)),
-                sync_codecs: sync_codecs.unwrap(),
-                sync_list,
-            },
-        ),
+        Commands::Sync(opts) => commands::sync::run(opts),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "tsync", &mut std::io::stdout());
@@ -47,10 +21,9 @@ fn main() {
         }
     };
 
-    if let Err(e) = run {
-        match e.type_ {
-            ErrorType::Abort => {}
-            _ => eprintln!("{}", e),
-        }
+    if let Err(e) = run
+        && e.type_ != ErrorType::Abort
+    {
+        eprintln!("{e}");
     }
 }

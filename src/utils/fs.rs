@@ -1,8 +1,21 @@
-use std::path::{Path, PathBuf};
+use std::{
+    io::BufRead,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use clap::ValueEnum;
 
 use crate::errors::{Error, Result};
+
+struct BackendADB;
+struct BackendNone;
+
+trait FSEmu {
+    fn available() -> Result<bool>;
+    fn cp(source: &Path, target: &Path) -> Result<()>;
+    fn exists(source: &Path) -> Result<bool>;
+}
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum FSBackend {
@@ -16,21 +29,81 @@ pub enum FSBackend {
     None,
 }
 
-pub fn get_file_name(p: &std::path::Path) -> String {
-    p.file_name().unwrap().to_string_lossy().to_string()
+impl FSBackend {
+    pub fn available(&self) -> Result<bool> {
+        match self {
+            FSBackend::Adb => BackendADB::available(),
+            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::None => BackendNone::available(),
+        }
+    }
+
+    pub fn cp(&self, source: &Path, target: &Path) -> Result<()> {
+        match self {
+            FSBackend::Adb => BackendADB::cp(source, target),
+            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::None => BackendNone::cp(source, target),
+        }
+    }
+
+    pub fn exists(&self, source: &Path) -> Result<bool> {
+        match self {
+            FSBackend::Adb => BackendADB::exists(source),
+            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::None => BackendNone::exists(source),
+        }
+    }
 }
 
-pub fn get_file_ext(p: &std::path::Path) -> String {
-    p.extension().unwrap().to_string_lossy().to_string()
+impl FSEmu for BackendNone {
+    #[inline]
+    fn available() -> Result<bool> {
+        Ok(true)
+    }
+
+    fn cp(source: &Path, target: &Path) -> Result<()> {
+        std::fs::copy(source, target)?;
+        Ok(())
+    }
+
+    fn exists(source: &Path) -> Result<bool> {
+        Ok(source.try_exists()?)
+    }
 }
 
-pub fn is_extra(p: &std::path::Path) -> bool {
-    p.file_name().is_some_and(|e| {
-        matches!(
-            e.to_string_lossy().to_lowercase().as_str(),
-            "cover.jpg" | "cover.png" | "folder.jpg" | "folder.png" | "front.jpg" | "front.png"
-        )
-    })
+impl FSEmu for BackendADB {
+    fn available() -> Result<bool> {
+        let is_adb_running = Command::new("adb")
+            .arg("devices")
+            .output()
+            .map(|x| x.status.success() && x.stdout.lines().count() > 2)?;
+
+        Ok(is_adb_running)
+    }
+
+    fn cp(source: &Path, target: &Path) -> Result<()> {
+        let source = source.to_string_lossy().replace('\\', "/");
+        let target = target.to_string_lossy().replace('\\', "/");
+
+        let mut cmd = Command::new("adb");
+        cmd.arg("push").arg(source).arg(target);
+
+        let output = cmd.output()?;
+        if !output.status.success() {
+            let message = format!("adb exited with code {}", output.status.code().unwrap_or(-1));
+            return Err(Error::descriptive(message));
+        }
+
+        Ok(())
+    }
+
+    fn exists(source: &Path) -> Result<bool> {
+        // For some reason adb shell only accepts "escaped paths", like path/dir/location.opus -> "path/dir/location" with string quotes
+        let path = format!(r#""{}""#, source.to_string_lossy().replace('\\', "/"));
+        let output = Command::new("adb").arg("shell").arg("ls").arg(path).output()?;
+
+        Ok(output.status.success())
+    }
 }
 
 pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>> {

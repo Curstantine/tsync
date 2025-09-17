@@ -79,7 +79,7 @@ impl Codec {
         }
     }
 
-    pub fn get_extension_str(&self) -> &'static str {
+    pub fn extenstion_str(&self) -> &'static str {
         match *self {
             Codec::Opus => "opus",
             Codec::Vorbis => "ogg",
@@ -90,7 +90,7 @@ impl Codec {
         }
     }
 
-    pub fn get_ffmpeg_lib(&self) -> &'static str {
+    pub fn ffmpeg_lib(&self) -> &'static str {
         match *self {
             Codec::Opus => "libopus",
             Codec::Vorbis => "libvorbis",
@@ -101,7 +101,7 @@ impl Codec {
         }
     }
 
-    pub fn get_matching_bitrate(&self, optional: Option<u32>) -> Result<u32> {
+    pub fn matching_bitrate(&self, optional: Option<u32>) -> Result<u32> {
         match optional {
             Some(opt_bitrate) => {
                 let (min, max) = match self {
