@@ -90,7 +90,11 @@ impl FSEmu for BackendADB {
 
         let output = cmd.output()?;
         if !output.status.success() {
-            let message = format!("adb exited with code {}", output.status.code().unwrap_or(-1));
+            let message = format!(
+                "adb exited with code {} detailing {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8(output.stderr).unwrap()
+            );
             return Err(Error::descriptive(message));
         }
 
