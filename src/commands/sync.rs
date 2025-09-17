@@ -158,9 +158,8 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
     for file in files {
         let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
-        let source_file_ext = file.get_file_ext();
 
-        let meta = get_track_data(&file, &source_file_ext)?;
+        let meta = get_track_data(&file, &file.get_file_ext())?;
         let is_syncable = opts.sync_codecs.contains(&meta.codec);
         let is_transcodable = !is_syncable && opts.transcode_codecs.contains(&meta.codec);
 
@@ -170,6 +169,12 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         let is_temp = opts.codec.is_some() && is_transcodable;
         let final_source_path: PathBuf;
         let final_target_path: PathBuf;
+
+        if (is_temp || is_syncable)
+            && let Some(x) = file.parent()
+        {
+            parent_set.insert(x.to_path_buf());
+        }
 
         if is_transcodable && let Some(codec) = opts.codec {
             let new_ext = codec.extenstion_str();
@@ -204,10 +209,6 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         } else {
             skipping(&rel_path, &indicator, Some("due to no codec"));
             continue;
-        }
-
-        if let Some(x) = rel_path.parent() {
-            parent_set.insert(x.to_path_buf());
         }
 
         indicator.set_message(format!("Syncing {:?}", rel_path.get_file_name()));
