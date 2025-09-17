@@ -1,6 +1,6 @@
 pkgname=tsync
-pkgver=0.1.1
-pkgrel=2
+pkgver=0.1.2
+pkgrel=3
 pkgdesc="CLI utility to sync your local music library to another device"
 arch=('x86_64')
 url="https://github.com/curstantine/tsync"
@@ -8,7 +8,7 @@ license=('MIT')
 depends=()
 optdepends=(
     'ffmpeg: for on-the-fly transcoding (optional)'
-    'opusenc: for encoding to Opus via opus-tools (optional)'
+    'opus-tools: for encoding to Opus via opus-tools (optional)'
     'adb: to sync via Android Debug Bridge (optional)'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/Curstantine/tsync/releases/download/v$pkgver/tsync-unix.tar.gz")
