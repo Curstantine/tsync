@@ -137,11 +137,13 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     let indicator = {
         #[rustfmt::skip]
         let len = if opts.include_extras { files.len() + 1 } else { files.len() } as u64;
-        ProgressBar::new(len).with_style(
-            ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
-                .unwrap()
-                .progress_chars("#>-"),
-        )
+        ProgressBar::new(len)
+            .with_style(
+                ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
+                    .unwrap()
+                    .progress_chars("#>-"),
+            )
+            .with_message("Building file list...")
     };
 
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
@@ -158,7 +160,6 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
     let mut parent_set = HashSet::<PathBuf>::with_capacity(files.len() / 3);
 
-    // Separate files into transcode and sync categories
     let mut transcode_jobs = Vec::new();
     let mut sync_jobs = Vec::new();
 
@@ -200,35 +201,55 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     }
 
     // Spawn transcoding threads
-    let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-    let (tx, rx) = mpsc::channel();
+    if !transcode_jobs.is_empty() {
+        let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+        let (tx, rx) = mpsc::channel();
 
-    let codec = opts.codec;
-    let bitrate = bitrate.expect("Bitrate must be set if codec is set");
-    let temp_dir = Arc::new(temp_dir);
+        let codec = opts.codec;
+        let bitrate = bitrate.expect("Bitrate must be set if codec is set");
+        let temp_dir = Arc::new(temp_dir);
 
-    for chunk in transcode_jobs.chunks((transcode_jobs.len() / num_threads).max(1)) {
-        let tx = tx.clone();
-        let chunk = chunk.to_vec();
-        let temp_dir = Arc::clone(&temp_dir);
-        let codec = codec.unwrap();
+        for chunk in transcode_jobs.chunks((transcode_jobs.len() / num_threads).max(1)) {
+            let tx = tx.clone();
+            let chunk = chunk.to_vec();
+            let temp_dir = Arc::clone(&temp_dir);
+            let codec = codec.unwrap();
 
-        thread::spawn(move || {
-            for (file, target_rel, rel_path) in chunk {
-                let temp_path = temp_dir.join(&target_rel);
+            thread::spawn(move || {
+                for (file, target_rel, rel_path) in chunk {
+                    let temp_path = temp_dir.join(&target_rel);
 
-                if let Some(parent) = temp_path.parent() {
-                    let _ = fs::create_dir_all(parent);
+                    if let Some(parent) = temp_path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+
+                    let result =
+                        transcode_file(&file, &temp_path, codec, bitrate).map(|_| (temp_path, target_rel, rel_path));
+
+                    let _ = tx.send(result);
                 }
+            });
+        }
 
-                let result =
-                    transcode_file(&file, &temp_path, codec, bitrate).map(|_| (temp_path, target_rel, rel_path));
+        drop(tx);
 
-                let _ = tx.send(result);
+        for result in rx {
+            let (temp_path, target_rel, rel_path) = result?;
+
+            indicator.set_message(format!("Transcoded {}", rel_path.get_file_name()));
+            indicator.inc(1);
+
+            let target_path = target_dir.join(&target_rel);
+            indicator.set_message(format!("Syncing {:?}", target_rel.get_file_name()));
+
+            if let Err(e) = fs.cp(&temp_path, &target_path) {
+                let context = format!("While copying {temp_path:#?} to {target_path:#?}");
+                return Err(e.with_context(context));
             }
-        });
+
+            fs::remove_file(temp_path)?;
+        }
     }
-    drop(tx);
 
     // Sync non-transcoded files
     for (file, rel_path) in sync_jobs {
@@ -241,26 +262,6 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         }
 
         indicator.inc(1);
-    }
-
-    for result in rx {
-        match result {
-            Ok((temp_path, target_rel, rel_path)) => {
-                indicator.set_message(format!("Transcoded {}", rel_path.get_file_name()));
-                indicator.inc(1);
-
-                let target_path = target_dir.join(&target_rel);
-                indicator.set_message(format!("Syncing {:?}", target_rel.get_file_name()));
-
-                if let Err(e) = fs.cp(&temp_path, &target_path) {
-                    let context = format!("While copying {temp_path:#?} to {target_path:#?}");
-                    return Err(e.with_context(context));
-                }
-
-                fs::remove_file(temp_path)?;
-            }
-            Err(e) => return Err(e),
-        }
     }
 
     if opts.include_extras {

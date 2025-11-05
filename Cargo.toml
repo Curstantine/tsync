@@ -1,6 +1,6 @@
 [package]
 name = "tsync"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Curstantine <curstantine@proton.me>"]
 edition = "2024"
 
