@@ -2,6 +2,8 @@ use std::{
     collections::HashSet,
     env, fs, io,
     path::{Path, PathBuf},
+    sync::{Arc, mpsc},
+    thread,
 };
 
 use clap::{Args, arg};
@@ -156,32 +158,25 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
     let mut parent_set = HashSet::<PathBuf>::with_capacity(files.len() / 3);
 
-    for file in files {
-        let mut rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
+    // Separate files into transcode and sync categories
+    let mut transcode_jobs = Vec::new();
+    let mut sync_jobs = Vec::new();
 
+    for file in files {
+        let rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
         let meta = get_track_data(&file, &file.get_file_ext())?;
         let is_syncable = opts.sync_codecs.contains(&meta.codec);
         let is_transcodable = !is_syncable && opts.transcode_codecs.contains(&meta.codec);
 
-        // But why? Can't we use the check from codec.is_some()? No, not really.
-        // We support syncing files that are part of the sync_extensions, so they don't go through the transcoding workflow.
-        // So in cases like removing the temp file, it will remove the source file instead.
-        let is_temp = opts.codec.is_some() && is_transcodable;
-        let final_source_path: PathBuf;
-        let final_target_path: PathBuf;
-
-        if (is_temp || is_syncable)
-            && let Some(x) = file.parent()
+        if let Some(x) = file.parent()
+            && (is_syncable || is_transcodable)
         {
             parent_set.insert(x.to_path_buf());
         }
 
         if is_transcodable && let Some(codec) = opts.codec {
             let new_ext = codec.extenstion_str();
-            let bitrate = bitrate.expect("Bitrate must be set if codec is set");
-
             let target_rel = rel_path.with_extension(new_ext);
-            let temp_path = temp_dir.join(&target_rel);
             let target_path = target_dir.join(&target_rel);
 
             if fs.exists(&target_path)? {
@@ -189,44 +184,88 @@ pub fn run(opts: SyncOpts) -> Result<()> {
                 continue;
             }
 
-            let message = format!("Transcoding {} [{codec:?}@{bitrate}K]", rel_path.get_file_name());
-            indicator.set_message(message);
-
-            fs::create_dir_all(temp_path.parent().unwrap())?;
-            transcode_file(&file, &temp_path, codec, bitrate)?;
-
-            rel_path = target_rel;
-            final_source_path = temp_path;
-            final_target_path = target_path;
+            transcode_jobs.push((file, target_rel, rel_path));
         } else if is_syncable {
-            final_source_path = file;
-            final_target_path = target_dir.join(&rel_path);
+            let target_path = target_dir.join(&rel_path);
 
-            if fs.exists(&final_target_path)? {
+            if fs.exists(&target_path)? {
                 path_already_exists(&rel_path, &indicator);
                 continue;
             }
+
+            sync_jobs.push((file, rel_path));
         } else {
             skipping(&rel_path, &indicator, Some("due to no codec"));
-            continue;
         }
+    }
+
+    // Spawn transcoding threads
+    let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let (tx, rx) = mpsc::channel();
+
+    let codec = opts.codec;
+    let bitrate = bitrate.expect("Bitrate must be set if codec is set");
+    let temp_dir = Arc::new(temp_dir);
+
+    for chunk in transcode_jobs.chunks((transcode_jobs.len() / num_threads).max(1)) {
+        let tx = tx.clone();
+        let chunk = chunk.to_vec();
+        let temp_dir = Arc::clone(&temp_dir);
+        let codec = codec.unwrap();
+
+        thread::spawn(move || {
+            for (file, target_rel, rel_path) in chunk {
+                let temp_path = temp_dir.join(&target_rel);
+
+                if let Some(parent) = temp_path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+
+                let result =
+                    transcode_file(&file, &temp_path, codec, bitrate).map(|_| (temp_path, target_rel, rel_path));
+
+                let _ = tx.send(result);
+            }
+        });
+    }
+    drop(tx);
+
+    // Sync non-transcoded files
+    for (file, rel_path) in sync_jobs {
+        let target_path = target_dir.join(&rel_path);
 
         indicator.set_message(format!("Syncing {:?}", rel_path.get_file_name()));
-        if let Err(e) = fs.cp(&final_source_path, &final_target_path) {
-            let context = format!("While copying {final_source_path:#?} to {final_target_path:#?}");
+        if let Err(e) = fs.cp(&file, &target_path) {
+            let context = format!("While copying {file:#?} to {target_path:#?}");
             return Err(e.with_context(context));
-        }
-
-        if is_temp {
-            fs::remove_file(final_source_path)?;
         }
 
         indicator.inc(1);
     }
 
+    for result in rx {
+        match result {
+            Ok((temp_path, target_rel, rel_path)) => {
+                indicator.set_message(format!("Transcoded {}", rel_path.get_file_name()));
+                indicator.inc(1);
+
+                let target_path = target_dir.join(&target_rel);
+                indicator.set_message(format!("Syncing {:?}", target_rel.get_file_name()));
+
+                if let Err(e) = fs.cp(&temp_path, &target_path) {
+                    let context = format!("While copying {temp_path:#?} to {target_path:#?}");
+                    return Err(e.with_context(context));
+                }
+
+                fs::remove_file(temp_path)?;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
     if opts.include_extras {
         let exts = vec!["jpg", "png", "jpeg"];
-        let files = read_selectively(&parent_set.into_iter().collect::<Vec<_>>(), &Some(exts))?;
+        let files = read_selectively(parent_set, &Some(exts))?;
 
         for file in files.into_iter().filter(|x| x.is_extra()) {
             let rel_path = file.strip_prefix(source_dir).unwrap();

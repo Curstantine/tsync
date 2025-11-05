@@ -148,7 +148,11 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'s
     Ok(files)
 }
 
-pub fn read_selectively<P: AsRef<Path>>(paths: &[P], extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>> {
+pub fn read_selectively<P, I>(paths: I, extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = P>,
+{
     let mut files = Vec::<PathBuf>::new();
 
     for entry in paths {
