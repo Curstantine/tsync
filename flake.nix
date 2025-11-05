@@ -2,6 +2,7 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
+    rust-overlay.url = "github:oxalica/rust-overlay";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
@@ -10,15 +11,14 @@
       self,
       flake-utils,
       naersk,
+      rust-overlay,
       nixpkgs,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = (import nixpkgs) {
-          inherit system;
-        };
-
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
         naersk' = pkgs.callPackage naersk { };
 
         # Runtime dependencies
@@ -29,7 +29,6 @@
 
         # Build-time dependencies
         nativeBuildInputs = with pkgs; [ ];
-
       in
       rec {
         # For `nix build` & `nix run`:
@@ -44,11 +43,9 @@
           nativeBuildInputs =
             with pkgs;
             [
-              rustc
-              cargo
-              clippy
               nixfmt-rfc-style
               nil
+              rust-bin.stable.latest.default
             ]
             ++ buildInputs
             ++ nativeBuildInputs;
