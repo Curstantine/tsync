@@ -1,54 +1,69 @@
 {
   inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
-    naersk.url = "github:nix-community/naersk";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    naersk = {
+      url = "github:nix-community/naersk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
     {
       self,
-      flake-utils,
-      naersk,
-      rust-overlay,
       nixpkgs,
+      flake-utils,
+      rust-overlay,
+      naersk,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
-        naersk' = pkgs.callPackage naersk { };
-
-        # Runtime dependencies
-        buildInputs = with pkgs; [
-          android-tools
-          opusTools
-        ];
-
-        # Build-time dependencies
-        nativeBuildInputs = with pkgs; [ ];
-      in
-      rec {
-        # For `nix build` & `nix run`:
-        defaultPackage = naersk'.buildPackage {
-          src = ./.;
-          bulidInputs = buildInputs;
-          nativeBuildInputs = nativeBuildInputs;
+        pkgs = import nixpkgs {
+          inherit system overlays;
         };
 
-        # For `nix develop` (optional, can be skipped):
-        devShell = pkgs.mkShell {
-          nativeBuildInputs =
-            with pkgs;
-            [
-              nixfmt-rfc-style
-              nil
-              rust-bin.stable.latest.default
-            ]
-            ++ buildInputs
-            ++ nativeBuildInputs;
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+          ];
+        };
+
+        naersk-lib = pkgs.callPackage naersk {
+          cargo = rustToolchain;
+          rustc = rustToolchain;
+        };
+
+      in
+      {
+        # Build with: nix build
+        packages.default = naersk-lib.buildPackage {
+          src = ./.;
+
+          # Additional build inputs if needed
+          # buildInputs = with pkgs; [ openssl ];
+          # nativeBuildInputs = with pkgs; [ pkg-config ];
+        };
+
+        # Development shell with: nix develop
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [ rustToolchain ];
+
+          # Environment variables
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
+        };
+
+        # Run checks with: nix flake check
+        checks = {
+          build = self.packages.${system}.default;
         };
       }
     );
