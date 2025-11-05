@@ -42,22 +42,26 @@
           rustc = rustToolchain;
         };
 
+        # Dependencies required at run-time.
+        buildInputs = with pkgs; [
+          opusTools
+          android-tools
+        ];
+
+        # Dependencies required at build-time.
+        nativeBuildInputs = with pkgs; [ ];
       in
       {
         # Build with: nix build
         packages.default = naersk-lib.buildPackage {
           src = ./.;
-
-          # Additional build inputs if needed
-          # buildInputs = with pkgs; [ openssl ];
-          # nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = buildInputs;
+          nativeBuildInputs = nativeBuildInputs;
         };
 
         # Development shell with: nix develop
         devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [ rustToolchain ];
-
-          # Environment variables
+          buildInputs = with pkgs; [ rustToolchain ] ++ buildInputs ++ nativeBuildInputs;
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
         };
 

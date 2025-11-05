@@ -62,7 +62,21 @@ impl FSEmu for BackendNone {
     }
 
     fn cp(source: &Path, target: &Path) -> Result<()> {
-        std::fs::copy(source, target)?;
+        use std::{fs, io::ErrorKind};
+
+        if let Err(e) = fs::copy(source, target) {
+            if e.kind() == ErrorKind::NotFound {
+                let parent = target
+                    .parent()
+                    .ok_or_else(|| Error::descriptive("Target has no parent directory"))?;
+
+                fs::create_dir_all(parent)?;
+                fs::copy(source, target)?;
+            } else {
+                return Err(e.into());
+            }
+        }
+
         Ok(())
     }
 

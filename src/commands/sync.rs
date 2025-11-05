@@ -212,7 +212,10 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         }
 
         indicator.set_message(format!("Syncing {:?}", rel_path.get_file_name()));
-        fs.cp(&final_source_path, &final_target_path)?;
+        if let Err(e) = fs.cp(&final_source_path, &final_target_path) {
+            let context = format!("While copying {final_source_path:#?} to {final_target_path:#?}");
+            return Err(e.with_context(context));
+        }
 
         if is_temp {
             fs::remove_file(final_source_path)?;
