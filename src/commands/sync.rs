@@ -137,14 +137,14 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     let indicator = {
         #[rustfmt::skip]
         let len = if opts.include_extras { files.len() + 1 } else { files.len() } as u64;
-        ProgressBar::new(len)
-            .with_style(
-                ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
-                    .unwrap()
-                    .progress_chars("#>-"),
-            )
-            .with_message("Building file list...")
+        ProgressBar::new(len).with_style(
+            ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
+                .unwrap()
+                .progress_chars("#>-"),
+        )
     };
+
+    indicator.set_message("Building file list...");
 
     let path_already_exists = |p: &Path, indicator: &ProgressBar| {
         let message = format!("{} already exists", p.get_file_name());
@@ -159,6 +159,11 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     };
 
     let mut parent_set = HashSet::<PathBuf>::with_capacity(files.len() / 3);
+    let target_file_list = fs
+        .exists(source_dir)?
+        .then(|| fs.build_file_list(source_dir))
+        .transpose()?
+        .unwrap_or_else(|| HashSet::with_capacity(0));
 
     let mut transcode_jobs = Vec::new();
     let mut sync_jobs = Vec::new();
@@ -180,7 +185,7 @@ pub fn run(opts: SyncOpts) -> Result<()> {
             let target_rel = rel_path.with_extension(new_ext);
             let target_path = target_dir.join(&target_rel);
 
-            if fs.exists(&target_path)? {
+            if target_file_list.contains(&target_path) {
                 path_already_exists(&target_rel, &indicator);
                 continue;
             }
@@ -189,7 +194,7 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         } else if is_syncable {
             let target_path = target_dir.join(&rel_path);
 
-            if fs.exists(&target_path)? {
+            if target_file_list.contains(&target_path) {
                 path_already_exists(&rel_path, &indicator);
                 continue;
             }

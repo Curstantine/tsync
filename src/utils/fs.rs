@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     io::BufRead,
     path::{Path, PathBuf},
     process::Command,
@@ -13,6 +14,7 @@ struct BackendNone;
 
 trait FSEmu {
     fn available() -> Result<bool>;
+    fn build_file_list(source: &Path) -> Result<HashSet<PathBuf>>;
     fn cp(source: &Path, target: &Path) -> Result<()>;
     fn exists(source: &Path) -> Result<bool>;
 }
@@ -38,6 +40,14 @@ impl FSBackend {
         }
     }
 
+    pub fn build_file_list(&self, source: &Path) -> Result<HashSet<PathBuf>> {
+        match self {
+            FSBackend::Adb => BackendADB::build_file_list(source),
+            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::None => BackendNone::build_file_list(source),
+        }
+    }
+
     pub fn cp(&self, source: &Path, target: &Path) -> Result<()> {
         match self {
             FSBackend::Adb => BackendADB::cp(source, target),
@@ -59,6 +69,23 @@ impl FSEmu for BackendNone {
     #[inline]
     fn available() -> Result<bool> {
         Ok(true)
+    }
+
+    fn build_file_list(source: &Path) -> Result<HashSet<PathBuf>> {
+        let mut files = HashSet::new();
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                let sub_files = Self::build_file_list(&path)?;
+                files.extend(sub_files);
+            } else {
+                files.insert(path);
+            }
+        }
+
+        Ok(files)
     }
 
     fn cp(source: &Path, target: &Path) -> Result<()> {
@@ -93,6 +120,34 @@ impl FSEmu for BackendADB {
             .map(|x| x.status.success() && x.stdout.lines().count() > 2)?;
 
         Ok(is_adb_running)
+    }
+
+    fn build_file_list(source: &Path) -> Result<HashSet<PathBuf>> {
+        let mut files = HashSet::new();
+        let path_str = source.to_string_lossy().replace('\\', "/");
+        let output = Command::new("adb")
+            .arg("shell")
+            .arg("find")
+            .arg(&path_str)
+            .arg("-type")
+            .arg("f")
+            .output()?;
+
+        if !output.status.success() {
+            let message = format!(
+                "adb find failed with code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return Err(Error::descriptive(message));
+        }
+
+        for line in output.stdout.lines() {
+            let line = line?;
+            files.insert(PathBuf::from(line));
+        }
+
+        Ok(files)
     }
 
     fn cp(source: &Path, target: &Path) -> Result<()> {
