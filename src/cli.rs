@@ -24,7 +24,7 @@ pub enum Commands {
     },
 }
 
-fn get_styles() -> clap::builder::Styles {
+const fn get_styles() -> clap::builder::Styles {
     clap::builder::Styles::styled()
         .usage(
             Style::new()

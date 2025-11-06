@@ -5,9 +5,8 @@ use symphonia::core::{
     codecs::{
         CODEC_TYPE_AAC, CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS, CodecType,
     },
-    formats::{FormatOptions, Track},
+    formats::Track,
     io::MediaSourceStream,
-    meta::MetadataOptions,
     probe::Hint,
 };
 
@@ -19,39 +18,26 @@ pub struct TrackData {
 }
 
 pub fn get_track_data(path: &Path, extension: &str) -> Result<TrackData> {
-    let source = File::open(path).unwrap();
+    let source = File::open(path)?;
 
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
-    let meta_opts: MetadataOptions = Default::default();
-    let fmt_opts: FormatOptions = Default::default();
     let mut hint = Hint::new();
-
     hint.with_extension(extension);
 
     let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &fmt_opts, &meta_opts)
-        .unwrap();
+        .format(&hint, mss, &Default::default(), &Default::default())
+        .map_err(|e| Error::descriptive(format!("Failed to probe format: {e}")))?;
 
-    probe_track(probed.format.tracks()).map_err(|e| {
-        let path_str = path.to_string_lossy();
-        e.with_context(path_str)
-    })
+    probe_track(probed.format.tracks()).map_err(|e| e.with_context(path.to_string_lossy().into_owned()))
 }
 
 fn probe_track(tracks: &[Track]) -> Result<TrackData> {
-    let mut codec_type = None::<CodecType>;
-
-    if let Some(track) = tracks.first() {
-        let params = &track.codec_params;
-        codec_type = Some(params.codec);
-    }
-
-    if codec_type.is_none() {
-        return Err(Error::descriptive("codec_type is not available"));
-    }
+    let track = tracks
+        .first()
+        .ok_or_else(|| Error::descriptive("No tracks found in file"))?;
 
     Ok(TrackData {
-        codec: Codec::from_symphonia(codec_type.unwrap()),
+        codec: Codec::from_symphonia(track.codec_params.codec),
     })
 }
 

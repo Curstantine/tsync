@@ -6,28 +6,24 @@ use crate::{
 };
 
 pub fn transcode_file<P: AsRef<Path>>(source: P, target: P, codec: Codec, bitrate: u32) -> Result<()> {
+    let bitrate_str = format!("{bitrate}K");
+
     let output = match codec {
-        Codec::Opus => {
-            let mut cmd = Command::new("opusenc");
-            cmd.arg("--bitrate")
-                .arg(format!("{}K", bitrate))
-                .arg(source.as_ref())
-                .arg(target.as_ref());
-
-            cmd.output()
-        }
-        _ => {
-            let mut cmd = Command::new("ffmpeg");
-            cmd.arg("-i")
-                .arg(source.as_ref())
-                .arg("-c:a")
-                .arg(codec.ffmpeg_lib())
-                .arg("-b:a")
-                .arg(format!("{}K", bitrate))
-                .arg(target.as_ref());
-
-            cmd.output()
-        }
+        Codec::Opus => Command::new("opusenc")
+            .arg("--bitrate")
+            .arg(&bitrate_str)
+            .arg(source.as_ref())
+            .arg(target.as_ref())
+            .output(),
+        _ => Command::new("ffmpeg")
+            .arg("-i")
+            .arg(source.as_ref())
+            .arg("-c:a")
+            .arg(codec.ffmpeg_lib())
+            .arg("-b:a")
+            .arg(&bitrate_str)
+            .arg(target.as_ref())
+            .output(),
     }?;
 
     if !output.status.success() {

@@ -181,26 +181,34 @@ impl FSEmu for BackendADB {
 
 pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>> {
     let mut files = Vec::<PathBuf>::new();
+    read_dir_recursively_impl(path.as_ref(), extensions, &mut files)?;
+    Ok(files)
+}
 
+fn read_dir_recursively_impl(
+    path: &Path,
+    extensions: &Option<Vec<&'static str>>,
+    files: &mut Vec<PathBuf>,
+) -> Result<()> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
 
         if path.is_dir() {
-            let mut sub_files = read_dir_recursively(path, extensions)?;
-            files.append(&mut sub_files);
+            read_dir_recursively_impl(&path, extensions, files)?;
             continue;
         }
 
-        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
-        match extensions {
-            Some(exts) if exts.contains(&ext) => files.push(path),
-            None => files.push(path),
-            _ => continue,
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            match extensions {
+                Some(exts) if exts.contains(&ext) => files.push(path),
+                None => files.push(path),
+                _ => continue,
+            }
         }
     }
 
-    Ok(files)
+    Ok(())
 }
 
 pub fn read_selectively<P, I>(paths: I, extensions: &Option<Vec<&'static str>>) -> Result<Vec<PathBuf>>
@@ -214,20 +222,20 @@ where
         let path = entry.as_ref();
 
         if !path.exists() {
-            return Err(Error::descriptive("File does not exist").with_context(path.to_string_lossy()));
+            return Err(Error::descriptive("File does not exist").with_context(path.to_string_lossy().into_owned()));
         }
 
         if path.is_dir() {
-            let mut sub_files = read_dir_recursively(path, extensions)?;
-            files.append(&mut sub_files);
+            read_dir_recursively_impl(path, extensions, &mut files)?;
             continue;
         }
 
-        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
-        match extensions {
-            Some(exts) if exts.contains(&ext) => files.push(path.to_path_buf()),
-            None => files.push(path.to_path_buf()),
-            _ => continue,
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            match extensions {
+                Some(exts) if exts.contains(&ext) => files.push(path.to_path_buf()),
+                None => files.push(path.to_path_buf()),
+                _ => continue,
+            }
         }
     }
 

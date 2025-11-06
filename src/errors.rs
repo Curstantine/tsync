@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -16,13 +17,14 @@ pub enum ErrorType {
 #[derive(Debug)]
 pub struct Error {
     pub type_: ErrorType,
-    pub message: String,
-    pub context: Option<String>,
+    pub message: Cow<'static, str>,
+    pub context: Option<Cow<'static, str>>,
     pub source: Option<Box<dyn std::error::Error + Send>>,
 }
 
 impl Error {
-    pub fn descriptive(message: impl Into<String>) -> Self {
+    #[inline]
+    pub fn descriptive(message: impl Into<Cow<'static, str>>) -> Self {
         Self {
             type_: ErrorType::Descriptive,
             message: message.into(),
@@ -31,7 +33,8 @@ impl Error {
         }
     }
 
-    pub fn with_context(mut self, context: impl Into<String>) -> Self {
+    #[inline]
+    pub fn with_context(mut self, context: impl Into<Cow<'static, str>>) -> Self {
         self.context = Some(context.into());
         self
     }
@@ -57,7 +60,7 @@ impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Self {
             type_: ErrorType::StdIo,
-            message: error.to_string(),
+            message: Cow::Owned(error.to_string()),
             context: None,
             source: Some(Box::new(error)),
         }
@@ -68,7 +71,7 @@ impl From<std::num::ParseIntError> for Error {
     fn from(error: std::num::ParseIntError) -> Self {
         Self {
             type_: ErrorType::StdParseInt,
-            message: error.to_string(),
+            message: Cow::Owned(error.to_string()),
             context: None,
             source: Some(Box::new(error)),
         }

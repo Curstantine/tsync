@@ -1,6 +1,8 @@
+use std::ffi::OsStr;
+
 pub trait PathExtensions {
     fn get_file_name(&self) -> String;
-    fn get_file_ext(&self) -> String;
+    fn get_file_ext(&self) -> &str;
     fn is_extra(&self) -> bool;
 }
 
@@ -11,8 +13,8 @@ impl PathExtensions for std::path::Path {
     }
 
     #[inline]
-    fn get_file_ext(&self) -> String {
-        self.extension().unwrap().to_string_lossy().to_string()
+    fn get_file_ext(&self) -> &str {
+        self.extension().and_then(OsStr::to_str).unwrap_or("")
     }
 
     #[inline]
