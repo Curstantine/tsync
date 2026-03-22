@@ -207,7 +207,6 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         }
     }
 
-    // Spawn transcoding threads
     if !transcode_jobs.is_empty() {
         let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
         let (tx, rx) = mpsc::channel();
