@@ -73,7 +73,7 @@ E.g. source -> ~/Music/Library:
     ~/Music/Library/Various Artists/Stream Palette 4
     Various Artists/Stream Palette 5 -RANKED-"
     )]
-    sync_list: Option<String>,
+    sync_list: Option<PathBuf>,
 }
 
 pub fn run(opts: SyncOpts) -> Result<()> {
@@ -88,10 +88,7 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         return Err(Error::descriptive(message));
     }
 
-    let sync_list_files = opts
-        .sync_list
-        .map(|x| parse_sync_list(source_dir, x.as_ref()))
-        .transpose()?;
+    let sync_list_files = opts.sync_list.map(|x| parse_sync_list(source_dir, &x)).transpose()?;
 
     if let Err(e) = fs::create_dir(&temp_dir) {
         if e.kind() != io::ErrorKind::AlreadyExists {
@@ -134,14 +131,13 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
     println!("Found {} files", files.len().to_string().green());
 
+    let track_count = files.len();
     let indicator = {
-        #[rustfmt::skip]
-        let len = if opts.include_extras { files.len() + 1 } else { files.len() } as u64;
-        ProgressBar::new(len).with_style(
-            ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
-                .unwrap()
-                .progress_chars("#>-"),
-        )
+        let len = track_count as u64;
+        let style = ProgressStyle::with_template("{msg}\n[{elapsed_precise}] [{wide_bar:.cyan/blue}] [{pos}/{len}]")
+            .unwrap_or_else(|_| ProgressStyle::default_bar())
+            .progress_chars("#>-");
+        ProgressBar::new(len).with_style(style)
     };
 
     indicator.set_message("Building file list...");
@@ -160,8 +156,8 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
     let mut parent_set = HashSet::<PathBuf>::with_capacity(files.len() / 3);
     let target_file_list = fs
-        .exists(source_dir)?
-        .then(|| fs.build_file_list(source_dir))
+        .exists(target_dir)?
+        .then(|| fs.build_file_list(target_dir))
         .transpose()?
         .unwrap_or_else(|| HashSet::with_capacity(0));
 
@@ -169,8 +165,14 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     let mut sync_jobs = Vec::new();
 
     for file in files {
-        let rel_path = file.strip_prefix(source_dir).unwrap().to_path_buf();
-        let meta = get_track_data(&file, &file.get_file_ext())?;
+        let rel_path = file
+            .strip_prefix(source_dir)
+            .map_err(|_| Error::descriptive("File path is outside of the source directory"))?
+            .to_path_buf();
+        let extension = file
+            .get_file_ext()
+            .ok_or_else(|| Error::descriptive("Track file has no extension").with_context(file.to_string_lossy()))?;
+        let meta = get_track_data(&file, &extension)?;
         let is_syncable = opts.sync_codecs.contains(&meta.codec);
         let is_transcodable = !is_syncable && opts.transcode_codecs.contains(&meta.codec);
 
@@ -209,18 +211,20 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     if !transcode_jobs.is_empty() {
         let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
         let (tx, rx) = mpsc::channel();
+        let mut handles = Vec::new();
 
-        let codec = opts.codec;
-        let bitrate = bitrate.expect("Bitrate must be set if codec is set");
+        let codec = opts
+            .codec
+            .ok_or_else(|| Error::descriptive("Codec must be set for transcode jobs"))?;
+        let bitrate = bitrate.ok_or_else(|| Error::descriptive("Bitrate must be set for transcode jobs"))?;
         let temp_dir = Arc::new(temp_dir);
 
         for chunk in transcode_jobs.chunks((transcode_jobs.len() / num_threads).max(1)) {
             let tx = tx.clone();
             let chunk = chunk.to_vec();
             let temp_dir = Arc::clone(&temp_dir);
-            let codec = codec.unwrap();
 
-            thread::spawn(move || {
+            let handle = thread::spawn(move || {
                 for (file, target_rel, rel_path) in chunk {
                     let temp_path = temp_dir.join(&target_rel);
 
@@ -234,6 +238,8 @@ pub fn run(opts: SyncOpts) -> Result<()> {
                     let _ = tx.send(result);
                 }
             });
+
+            handles.push(handle);
         }
 
         drop(tx);
@@ -254,6 +260,12 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
             fs::remove_file(temp_path)?;
         }
+
+        for handle in handles {
+            if handle.join().is_err() {
+                return Err(Error::descriptive("A transcode worker thread panicked"));
+            }
+        }
     }
 
     // Sync non-transcoded files
@@ -272,9 +284,14 @@ pub fn run(opts: SyncOpts) -> Result<()> {
     if opts.include_extras {
         let exts = vec!["jpg", "png", "jpeg"];
         let files = read_selectively(parent_set, &Some(exts))?;
+        let files = files.into_iter().filter(|x| x.is_extra()).collect::<Vec<_>>();
 
-        for file in files.into_iter().filter(|x| x.is_extra()) {
-            let rel_path = file.strip_prefix(source_dir).unwrap();
+        indicator.set_length((track_count + files.len()) as u64);
+
+        for file in files {
+            let rel_path = file
+                .strip_prefix(source_dir)
+                .map_err(|_| Error::descriptive("Extra file path is outside of source directory"))?;
 
             let message = format!("Syncing extra {}", rel_path.get_file_name());
             indicator.set_message(message);
@@ -284,11 +301,9 @@ pub fn run(opts: SyncOpts) -> Result<()> {
                 continue;
             }
 
-            indicator.set_message("Syncing extra files...");
             fs.cp(&file, &target_dir.join(rel_path))?;
+            indicator.inc(1);
         }
-
-        indicator.inc(1);
     }
 
     indicator.finish_with_message("Done!");

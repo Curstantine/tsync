@@ -24,7 +24,8 @@ pub enum FSBackend {
     /// Useful for android devices connected over tcpip or usb, and is recommended for all android-targeted syncs.
     Adb,
 
-    /// Essentially the same as using none, but with validation for ftp addresses.
+    /// Reserved for future FTP backend support.
+    #[value(hide = true)]
     Ftp,
 
     /// Not recommended for syncing between devices, but can be useful for moving files around on the same device.
@@ -35,7 +36,7 @@ impl FSBackend {
     pub fn available(&self) -> Result<bool> {
         match self {
             FSBackend::Adb => BackendADB::available(),
-            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::Ftp => Err(Error::descriptive("FTP backend is not implemented yet")),
             FSBackend::None => BackendNone::available(),
         }
     }
@@ -43,7 +44,7 @@ impl FSBackend {
     pub fn build_file_list(&self, source: &Path) -> Result<HashSet<PathBuf>> {
         match self {
             FSBackend::Adb => BackendADB::build_file_list(source),
-            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::Ftp => Err(Error::descriptive("FTP backend is not implemented yet")),
             FSBackend::None => BackendNone::build_file_list(source),
         }
     }
@@ -51,7 +52,7 @@ impl FSBackend {
     pub fn cp(&self, source: &Path, target: &Path) -> Result<()> {
         match self {
             FSBackend::Adb => BackendADB::cp(source, target),
-            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::Ftp => Err(Error::descriptive("FTP backend is not implemented yet")),
             FSBackend::None => BackendNone::cp(source, target),
         }
     }
@@ -59,7 +60,7 @@ impl FSBackend {
     pub fn exists(&self, source: &Path) -> Result<bool> {
         match self {
             FSBackend::Adb => BackendADB::exists(source),
-            FSBackend::Ftp => todo!("FTP backend not implemented"),
+            FSBackend::Ftp => Err(Error::descriptive("FTP backend is not implemented yet")),
             FSBackend::None => BackendNone::exists(source),
         }
     }
@@ -159,10 +160,11 @@ impl FSEmu for BackendADB {
 
         let output = cmd.output()?;
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let message = format!(
                 "adb exited with code {} detailing {}",
                 output.status.code().unwrap_or(-1),
-                String::from_utf8(output.stderr).unwrap()
+                stderr
             );
             return Err(Error::descriptive(message));
         }
@@ -192,7 +194,10 @@ pub fn read_dir_recursively<P: AsRef<Path>>(path: P, extensions: &Option<Vec<&'s
             continue;
         }
 
-        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
+        let ext = match path.extension().and_then(|ext| ext.to_str()) {
+            Some(ext) => ext,
+            None => continue,
+        };
         match extensions {
             Some(exts) if exts.contains(&ext) => files.push(path),
             None => files.push(path),
@@ -223,7 +228,10 @@ where
             continue;
         }
 
-        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap();
+        let ext = match path.extension().and_then(|ext| ext.to_str()) {
+            Some(ext) => ext,
+            None => continue,
+        };
         match extensions {
             Some(exts) if exts.contains(&ext) => files.push(path.to_path_buf()),
             None => files.push(path.to_path_buf()),

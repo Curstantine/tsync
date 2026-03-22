@@ -32,7 +32,12 @@ Examples are based on library being in `~/Music/Library`, and mobile library bei
    tsync sync --sync-list ./synclist.txt ~/Music/Library /sdcard/Music/Library
    ```
 
-4. Syncing a select sync list with a no transcode flac filter
-   ```sh
-   tsync sync --sync-list ./synclist.txt --sync-codecs flac ~/Music/Library /sdcard/Music/Library
-   ```
+4. Syncing a selected sync list with a no-transcode flac filter
+    ```sh
+    tsync sync --sync-list ./synclist.txt --sync-codecs flac ~/Music/Library /sdcard/Music/Library
+    ```
+
+## Notes
+
+- Paths in a sync list are trimmed, and empty lines / lines starting with `#` are ignored.
+- Existing files on the target are skipped.

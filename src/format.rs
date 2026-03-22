@@ -19,7 +19,8 @@ pub struct TrackData {
 }
 
 pub fn get_track_data(path: &Path, extension: &str) -> Result<TrackData> {
-    let source = File::open(path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    let source = File::open(path).map_err(|e| Error::from(e).with_context(path_str.clone()))?;
 
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
     let meta_opts: MetadataOptions = Default::default();
@@ -30,29 +31,20 @@ pub fn get_track_data(path: &Path, extension: &str) -> Result<TrackData> {
 
     let probed = symphonia::default::get_probe()
         .format(&hint, mss, &fmt_opts, &meta_opts)
-        .unwrap();
+        .map_err(|e| Error::descriptive(format!("Failed to probe media format: {e}")).with_context(path_str.clone()))?;
 
-    probe_track(probed.format.tracks()).map_err(|e| {
-        let path_str = path.to_string_lossy();
-        e.with_context(path_str)
-    })
+    probe_track(probed.format.tracks()).map_err(|e| e.with_context(path_str))
 }
 
 fn probe_track(tracks: &[Track]) -> Result<TrackData> {
-    let mut codec_type = None::<CodecType>;
+    let track = tracks
+        .first()
+        .ok_or_else(|| Error::descriptive("Track metadata is not available"))?;
+    let codec_type = track.codec_params.codec;
+    let codec = Codec::from_symphonia(codec_type)
+        .ok_or_else(|| Error::descriptive(format!("Unsupported codec: {codec_type:#?}")))?;
 
-    if let Some(track) = tracks.first() {
-        let params = &track.codec_params;
-        codec_type = Some(params.codec);
-    }
-
-    if codec_type.is_none() {
-        return Err(Error::descriptive("codec_type is not available"));
-    }
-
-    Ok(TrackData {
-        codec: Codec::from_symphonia(codec_type.unwrap()),
-    })
+    Ok(TrackData { codec })
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, PartialOrd)]
@@ -67,16 +59,18 @@ pub enum Codec {
 }
 
 impl Codec {
-    pub fn from_symphonia(codec_type: CodecType) -> Codec {
-        match codec_type {
+    pub fn from_symphonia(codec_type: CodecType) -> Option<Codec> {
+        let codec = match codec_type {
             CODEC_TYPE_OPUS => Codec::Opus,
             CODEC_TYPE_VORBIS => Codec::Vorbis,
             CODEC_TYPE_MP3 => Codec::Mp3,
             CODEC_TYPE_AAC => Codec::AacLc,
             CODEC_TYPE_FLAC => Codec::Flac,
             CODEC_TYPE_ALAC => Codec::Alac,
-            _ => unimplemented!("Unknown codec {codec_type:#?}"),
-        }
+            _ => return None,
+        };
+
+        Some(codec)
     }
 
     pub fn extenstion_str(&self) -> &'static str {
