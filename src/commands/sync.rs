@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use clap::{Args, arg};
+use clap::Args;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
