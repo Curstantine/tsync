@@ -3,12 +3,15 @@ use std::{fs::File, path::Path};
 use clap::ValueEnum;
 use symphonia::core::{
     codecs::{
-        CODEC_TYPE_AAC, CODEC_TYPE_ALAC, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS, CODEC_TYPE_VORBIS, CodecType,
+        CodecParameters,
+        audio::{
+            AudioCodecId,
+            well_known::{CODEC_ID_AAC, CODEC_ID_ALAC, CODEC_ID_FLAC, CODEC_ID_MP3, CODEC_ID_OPUS, CODEC_ID_VORBIS},
+        },
     },
-    formats::{FormatOptions, Track},
+    formats::{FormatOptions, Track, probe::Hint},
     io::MediaSourceStream,
     meta::MetadataOptions,
-    probe::Hint,
 };
 
 use crate::errors::{Error, Result};
@@ -26,25 +29,24 @@ pub fn get_track_data(path: &Path, extension: &str) -> Result<TrackData> {
     let meta_opts: MetadataOptions = Default::default();
     let fmt_opts: FormatOptions = Default::default();
     let mut hint = Hint::new();
-
     hint.with_extension(extension);
 
-    let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &fmt_opts, &meta_opts)
+    let format = symphonia::default::get_probe()
+        .probe(&hint, mss, fmt_opts, meta_opts)
         .map_err(|e| Error::descriptive(format!("Failed to probe media format: {e}")).with_context(path_str.clone()))?;
 
-    probe_track(probed.format.tracks()).map_err(|e| e.with_context(path_str))
+    probe_track(format.tracks()).map_err(|e| e.with_context(path_str))
 }
 
 fn probe_track(tracks: &[Track]) -> Result<TrackData> {
-    let track = tracks
-        .first()
-        .ok_or_else(|| Error::descriptive("Track metadata is not available"))?;
-    let codec_type = track.codec_params.codec;
-    let codec = Codec::from_symphonia(codec_type)
-        .ok_or_else(|| Error::descriptive(format!("Unsupported codec: {codec_type:#?}")))?;
-
-    Ok(TrackData { codec })
+    match tracks.first().map(|t| t.codec_params.as_ref()) {
+        Some(Some(CodecParameters::Audio(codec_type))) => {
+            let codec = Codec::from_symphonia(codec_type.codec)
+                .ok_or_else(|| Error::descriptive(format!("Unsupported codec: {codec_type:#?}")))?;
+            Ok(TrackData { codec })
+        }
+        _ => Err(Error::descriptive("Track metadata is not available")),
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, PartialOrd)]
@@ -59,14 +61,14 @@ pub enum Codec {
 }
 
 impl Codec {
-    pub fn from_symphonia(codec_type: CodecType) -> Option<Codec> {
+    pub fn from_symphonia(codec_type: AudioCodecId) -> Option<Codec> {
         let codec = match codec_type {
-            CODEC_TYPE_OPUS => Codec::Opus,
-            CODEC_TYPE_VORBIS => Codec::Vorbis,
-            CODEC_TYPE_MP3 => Codec::Mp3,
-            CODEC_TYPE_AAC => Codec::AacLc,
-            CODEC_TYPE_FLAC => Codec::Flac,
-            CODEC_TYPE_ALAC => Codec::Alac,
+            CODEC_ID_OPUS => Codec::Opus,
+            CODEC_ID_VORBIS => Codec::Vorbis,
+            CODEC_ID_MP3 => Codec::Mp3,
+            CODEC_ID_AAC => Codec::AacLc,
+            CODEC_ID_FLAC => Codec::Flac,
+            CODEC_ID_ALAC => Codec::Alac,
             _ => return None,
         };
 
