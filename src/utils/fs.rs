@@ -115,12 +115,27 @@ impl FSEmu for BackendNone {
 
 impl FSEmu for BackendADB {
     fn available() -> Result<bool> {
-        let is_adb_running = Command::new("adb")
-            .arg("devices")
-            .output()
-            .map(|x| x.status.success() && x.stdout.lines().count() > 2)?;
+        let adb = Command::new("adb").args(["devices", "-l"]).output()?;
 
-        Ok(is_adb_running)
+        if !adb.status.success() {
+            return Err(Error::descriptive("adb failed to run"));
+        }
+
+        let devices = adb
+            .stdout
+            .lines()
+            .skip(1)
+            .filter(|x| x.as_ref().is_ok_and(|z| !z.is_empty()));
+
+        if devices.count() < 1 {
+            return Err(Error::descriptive("adb returned no devices"));
+        }
+
+        // TODO:
+        // Check if at least one device is online.
+        // Allow the user to target which device to use by transport id.
+
+        Ok(true)
     }
 
     fn build_file_list(source: &Path) -> Result<HashSet<PathBuf>> {

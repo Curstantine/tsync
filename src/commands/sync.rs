@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env, fs, io,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::Arc,
     thread,
 };
 
@@ -16,6 +16,7 @@ use crate::{
     utils::{
         ffmpeg::transcode_file,
         fs::{FSBackend, read_dir_recursively, read_selectively},
+        parallel::run_parallel,
         parse_sync_list,
         path::PathExtensions,
     },
@@ -76,6 +77,19 @@ E.g. source -> ~/Music/Library:
     sync_list: Option<PathBuf>,
 }
 
+#[derive(Clone)]
+struct SyncJob {
+    source: PathBuf,
+    rel_path: PathBuf,
+}
+
+#[derive(Clone)]
+struct TranscodeJob {
+    source: PathBuf,
+    target_rel: PathBuf,
+    rel_path: PathBuf,
+}
+
 pub fn run(opts: SyncOpts) -> Result<()> {
     let fs = opts.fs;
 
@@ -104,6 +118,11 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         .as_ref()
         .map(|c| c.matching_bitrate(opts.bitrate))
         .transpose()?;
+
+    // NOTE: this overlap check only runs when `--codec` is set. If it isn't, and
+    // transcode_codecs/sync_codecs overlap, `is_syncable` silently wins over
+    // `is_transcodable` below (see `!is_syncable &&`) since no transcoding happens
+    // in that case anyway. Left as-is intentionally, not an oversight.
     if bitrate.is_some() && opts.transcode_codecs.iter().any(|tc| opts.sync_codecs.contains(tc)) {
         return Err(Error::descriptive("Sync and transcode codecs cannot overlap!"));
     }
@@ -161,8 +180,8 @@ pub fn run(opts: SyncOpts) -> Result<()> {
         .transpose()?
         .unwrap_or_else(|| HashSet::with_capacity(0));
 
-    let mut transcode_jobs = Vec::new();
-    let mut sync_jobs = Vec::new();
+    let mut transcode_jobs = Vec::<TranscodeJob>::new();
+    let mut sync_jobs = Vec::<SyncJob>::new();
 
     for file in files {
         let rel_path = file
@@ -192,7 +211,11 @@ pub fn run(opts: SyncOpts) -> Result<()> {
                 continue;
             }
 
-            transcode_jobs.push((file, target_rel, rel_path));
+            transcode_jobs.push(TranscodeJob {
+                source: file,
+                target_rel,
+                rel_path,
+            });
         } else if is_syncable {
             let target_path = target_dir.join(&rel_path);
 
@@ -201,83 +224,72 @@ pub fn run(opts: SyncOpts) -> Result<()> {
                 continue;
             }
 
-            sync_jobs.push((file, rel_path));
+            sync_jobs.push(SyncJob { source: file, rel_path });
         } else {
             skipping(&rel_path, &indicator, Some("due to no codec"));
         }
     }
 
-    if !transcode_jobs.is_empty() {
-        let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-        let (tx, rx) = mpsc::channel();
-        let mut handles = Vec::new();
+    let num_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
 
+    if !transcode_jobs.is_empty() {
         let codec = opts
             .codec
             .ok_or_else(|| Error::descriptive("Codec must be set for transcode jobs"))?;
         let bitrate = bitrate.ok_or_else(|| Error::descriptive("Bitrate must be set for transcode jobs"))?;
-        let temp_dir = Arc::new(temp_dir);
+        let temp_dir = Arc::new(temp_dir.clone());
+        let target_dir_owned = target_dir.to_path_buf();
+        let fs = fs.clone();
+        let indicator = indicator.clone();
 
-        for chunk in transcode_jobs.chunks((transcode_jobs.len() / num_threads).max(1)) {
-            let tx = tx.clone();
-            let chunk = chunk.to_vec();
-            let temp_dir = Arc::clone(&temp_dir);
+        run_parallel(transcode_jobs, num_threads, move |job: TranscodeJob| -> Result<()> {
+            let TranscodeJob {
+                source: file,
+                target_rel,
+                rel_path,
+            } = job;
 
-            let handle = thread::spawn(move || {
-                for (file, target_rel, rel_path) in chunk {
-                    let temp_path = temp_dir.join(&target_rel);
+            let temp_path = temp_dir.join(&target_rel);
 
-                    if let Some(parent) = temp_path.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
+            if let Some(parent) = temp_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
 
-                    let result =
-                        transcode_file(&file, &temp_path, codec, bitrate).map(|_| (temp_path, target_rel, rel_path));
-
-                    let _ = tx.send(result);
-                }
-            });
-
-            handles.push(handle);
-        }
-
-        drop(tx);
-
-        for result in rx {
-            let (temp_path, target_rel, rel_path) = result?;
+            transcode_file(&file, &temp_path, codec, bitrate)?;
 
             indicator.set_message(format!("Transcoded {}", rel_path.get_file_name()));
             indicator.inc(1);
 
-            let target_path = target_dir.join(&target_rel);
+            let target_path = target_dir_owned.join(&target_rel);
             indicator.set_message(format!("Syncing {:?}", target_rel.get_file_name()));
 
-            if let Err(e) = fs.cp(&temp_path, &target_path) {
-                let context = format!("While copying {temp_path:#?} to {target_path:#?}");
-                return Err(e.with_context(context));
-            }
+            fs.cp(&temp_path, &target_path)?;
+            fs::remove_file(&temp_path)?;
 
-            fs::remove_file(temp_path)?;
-        }
-
-        for handle in handles {
-            if handle.join().is_err() {
-                return Err(Error::descriptive("A transcode worker thread panicked"));
-            }
-        }
+            Ok(())
+        })?;
     }
 
-    // Sync non-transcoded files
-    for (file, rel_path) in sync_jobs {
-        let target_path = target_dir.join(&rel_path);
+    // Sync non-transcoded files in parallel
+    if !sync_jobs.is_empty() {
+        let target_dir_owned = target_dir.to_path_buf();
+        let fs = fs.clone();
+        let indicator = indicator.clone();
 
-        indicator.set_message(format!("Syncing {:?}", rel_path.get_file_name()));
-        if let Err(e) = fs.cp(&file, &target_path) {
-            let context = format!("While copying {file:#?} to {target_path:#?}");
-            return Err(e.with_context(context));
-        }
+        run_parallel(sync_jobs, num_threads, move |job: SyncJob| -> Result<()> {
+            let SyncJob { source: file, rel_path } = job;
+            let target_path = target_dir_owned.join(&rel_path);
 
-        indicator.inc(1);
+            indicator.set_message(format!("Syncing {:?}", rel_path.get_file_name()));
+
+            let result = fs.cp(&file, &target_path).map_err(|e| {
+                let context = format!("While copying {file:#?} to {target_path:#?}");
+                e.with_context(context)
+            });
+
+            indicator.inc(1);
+            result
+        })?;
     }
 
     if opts.include_extras {
@@ -287,21 +299,41 @@ pub fn run(opts: SyncOpts) -> Result<()> {
 
         indicator.set_length((track_count + files.len()) as u64);
 
+        // Build extra jobs, filtering out already-existing files
+        let mut extra_jobs: Vec<SyncJob> = Vec::new();
         for file in files {
             let rel_path = file
                 .strip_prefix(source_dir)
-                .map_err(|_| Error::descriptive("Extra file path is outside of source directory"))?;
+                .map_err(|_| Error::descriptive("Extra file path is outside of source directory"))?
+                .to_path_buf();
 
-            let message = format!("Syncing extra {}", rel_path.get_file_name());
-            indicator.set_message(message);
-
-            if fs.exists(&target_dir.join(rel_path))? {
-                path_already_exists(rel_path, &indicator);
+            if fs.exists(&target_dir.join(&rel_path))? {
+                path_already_exists(&rel_path, &indicator);
                 continue;
             }
 
-            fs.cp(&file, &target_dir.join(rel_path))?;
-            indicator.inc(1);
+            extra_jobs.push(SyncJob { source: file, rel_path });
+        }
+
+        if !extra_jobs.is_empty() {
+            let target_dir_owned = target_dir.to_path_buf();
+            let fs = fs.clone();
+            let indicator = indicator.clone();
+
+            run_parallel(extra_jobs, num_threads, move |job: SyncJob| -> Result<()> {
+                let SyncJob { source: file, rel_path } = job;
+                let target_path = target_dir_owned.join(&rel_path);
+
+                indicator.set_message(format!("Syncing extra {}", rel_path.get_file_name()));
+
+                let result = fs.cp(&file, &target_path).map_err(|e| {
+                    let context = format!("While copying {file:#?} to {target_path:#?}");
+                    e.with_context(context)
+                });
+
+                indicator.inc(1);
+                result
+            })?;
         }
     }
 

@@ -7,6 +7,7 @@ use crate::errors::Result;
 
 pub mod ffmpeg;
 pub mod fs;
+pub mod parallel;
 pub mod path;
 
 pub fn parse_sync_list(source_dir: &Path, path: &Path) -> Result<HashSet<PathBuf>> {
